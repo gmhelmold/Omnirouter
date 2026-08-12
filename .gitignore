@@ -37,6 +37,9 @@ htmlcov/
 .mypy_cache/
 *.pyc
 
+# Ruff
+.ruff_cache/
+
 # Jupyter
 .ipynb_checkpoints
 
