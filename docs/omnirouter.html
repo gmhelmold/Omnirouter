@@ -368,8 +368,8 @@ curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span
 (function(){
   var PROV = [
     {id:"anthropic", name:"Anthropic", ex:"claude-opus-5", speaks:"Anthropic (native)", cost:"paid",
-     note:"Native passthrough — e.g. a Max subscription reaches Anthropic models straight through the gateway.",
-     paid:["opus-5","opus-4.8","sonnet-5","haiku-4.5 (native ids)"]},
+     note:"Native passthrough — e.g. a Max subscription reaches Anthropic models straight through the gateway, by their native ids.",
+     paid:["opus-5","opus-4.8","sonnet-5","haiku-4.5"]},
     {id:"openrouter", name:"OpenRouter", ex:"claude-openrouter-deepseek", speaks:"Anthropic skin", cost:"both",
      note:"Byte-for-byte Anthropic passthrough. Both free and paid slugs.",
      free:["free-nemotron-ultra","free-nemotron-super","free-nemotron-nano","free-nemotron-nano-omni","free-nemotron-lightning","free-nemotron-12b-vl","free-nemotron-9b","free-gemma","free-gemma-26b","free-gpt-oss","free-north-code","free-ling-tiny","free-laguna-s","free-laguna-xs"],
