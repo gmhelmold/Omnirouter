@@ -182,7 +182,10 @@ class GatewayConfig(BaseSettings):
     # Timeouts
     request_timeout: float = Field(default=600.0, alias="REQUEST_TIMEOUT")  # 10 min
     connect_timeout: float = Field(default=10.0, alias="CONNECT_TIMEOUT")
-    keepalive_interval: float = Field(default=30.0, alias="KEEPALIVE_INTERVAL")
+    # Seconds of upstream silence before the streaming endpoint emits an
+    # Anthropic `ping` heartbeat (keeps slow reasoning models alive without
+    # killing the request). Set KEEPALIVE_INTERVAL=0 to disable.
+    keepalive_interval: float = Field(default=15.0, alias="KEEPALIVE_INTERVAL")
 
     # Rate Limiting (local enforcement for free tiers)
     gemini_rpm: int = Field(default=15, alias="GEMINI_RPM")

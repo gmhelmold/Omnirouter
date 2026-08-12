@@ -9,6 +9,7 @@ Claude Code Gateway - main FastAPI application.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -27,6 +28,7 @@ from gateway.backends.mistral import MistralBackend
 from gateway.backends.nim import NimBackend
 from gateway.backends.opencode_bridge import OpencodeBridgeBackend
 from gateway.backends.openrouter import OpenRouterBackend
+from gateway.config import get_config
 from gateway.discovery import get_discovery_payload
 from gateway.health import check_all_backends
 from gateway.messages import collect_message
@@ -170,17 +172,50 @@ def create_app() -> FastAPI:
                 events.append(event)
             return _json_response(collect_message(events, model))
 
+        # Passive keepalive: some models (e.g. large reasoning models) take tens
+        # of seconds before the first token. While the upstream is silent we
+        # emit an Anthropic `ping` every keepalive_interval seconds so the
+        # client/orchestrator knows the request is still alive and keeps waiting
+        # instead of treating the idle stream as dead. It never cancels the
+        # in-flight request — the same pending event is awaited across pings.
+        keepalive = get_config().keepalive_interval
+
         async def event_stream() -> AsyncGenerator[str, None]:
-            async for event in router_instance.route_with_fallback(model, body, headers, cwd=None):
-                if event.event == "raw":
-                    yield event.data["line"] + "\n"
-                elif event.event:
-                    yield f"event: {event.event}\n"
-                    if event.data is not None:
-                        yield f"data: {orjson.dumps(event.data).decode()}\n"
-                    if event.retry:
-                        yield f"retry: {event.retry}\n"
-                    yield "\n"
+            agen = router_instance.route_with_fallback(model, body, headers, cwd=None)
+            ait = agen.__aiter__()
+            pending: asyncio.Task[Any] = asyncio.ensure_future(ait.__anext__())
+            try:
+                while True:
+                    if keepalive and keepalive > 0:
+                        done, _ = await asyncio.wait({pending}, timeout=keepalive)
+                        if not done:
+                            # Upstream still working — heartbeat, don't kill.
+                            yield "event: ping\n"
+                            yield 'data: {"type": "ping"}\n\n'
+                            continue
+                    else:
+                        await asyncio.wait({pending})
+
+                    try:
+                        event = pending.result()
+                    except StopAsyncIteration:
+                        break
+
+                    if event.event == "raw":
+                        yield event.data["line"] + "\n"
+                    elif event.event:
+                        yield f"event: {event.event}\n"
+                        if event.data is not None:
+                            yield f"data: {orjson.dumps(event.data).decode()}\n"
+                        if event.retry:
+                            yield f"retry: {event.retry}\n"
+                        yield "\n"
+
+                    pending = asyncio.ensure_future(ait.__anext__())
+            finally:
+                if not pending.done():
+                    pending.cancel()
+                await agen.aclose()
 
         return StreamingResponse(
             event_stream(),
