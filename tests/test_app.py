@@ -120,3 +120,41 @@ async def test_messages_unknown_model_stream(client):
     )
     assert resp.status_code == 200
     assert "model_not_found" in resp.text
+
+
+class _SlowStub:
+    """Backend that stalls before its first event (simulates a slow model)."""
+    provider_name = "groq"
+    model_prefix = "claude-groq-"
+
+    async def handle_request(self, model, body, headers, cwd=None):
+        import asyncio
+        await asyncio.sleep(0.15)  # silent while "thinking"
+        yield SSEEvent(event="message_start", data={"type": "message_start", "message": {"id": "m", "model": model, "usage": {}}})
+        yield SSEEvent(event="content_block_delta", data={"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "hi"}})
+        yield SSEEvent(event="message_stop", data={"type": "message_stop"})
+
+
+@pytest.mark.asyncio
+async def test_streaming_emits_keepalive_ping(monkeypatch):
+    """A slow upstream must produce ping heartbeats before the first token,
+    and the real events must still arrive afterwards (never cancelled)."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("gateway.main.get_config",
+                        lambda: SimpleNamespace(keepalive_interval=0.05))
+    app = create_app()
+    get_router().initialize([_SlowStub()])
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        async with c.stream("POST", "/v1/messages", json={
+            "model": "claude-groq-llama3", "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+        }) as resp:
+            body = "".join([chunk async for chunk in resp.aiter_text()])
+
+    assert "event: ping" in body                 # heartbeat fired during the stall
+    assert body.index("event: ping") < body.index("text_delta")  # ping before content
+    assert '"text":"hi"' in body.replace(" ", "")  # real event still delivered
+    assert "message_stop" in body
