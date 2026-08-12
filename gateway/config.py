@@ -19,12 +19,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class OpenRouterModelMap(BaseModel):
+    # Premium / paid (valid current OpenRouter slugs)
     opus_5: str = Field(default="anthropic/claude-opus-5", alias="opus-5")
+    opus_48: str = Field(default="anthropic/claude-opus-4.8", alias="opus-4.8")
     sonnet_5: str = Field(default="anthropic/claude-sonnet-5", alias="sonnet-5")
-    haiku_5: str = Field(default="anthropic/claude-3.5-haiku", alias="haiku-5")
-    deepseek: str = Field(default="deepseek/deepseek-chat")
-    qwen_coder: str = Field(default="qwen/qwen-2.5-coder-32b-instruct", alias="qwen-coder")
-    glm_5: str = Field(default="z-ai/glm-5.2", alias="glm-5")
+    haiku_45: str = Field(default="anthropic/claude-haiku-4.5", alias="haiku-4.5")
+    deepseek: str = Field(default="deepseek/deepseek-chat-v3.1")
+    qwen_coder: str = Field(default="qwen/qwen3-coder", alias="qwen-coder")
+    # Free tier — any slug ending in ":free" is auto-tagged FREE in discovery.
+    free_nemotron_ultra: str = Field(
+        default="nvidia/nemotron-3-ultra-550b-a55b:free", alias="free-nemotron-ultra"
+    )
+    free_nemotron_super: str = Field(
+        default="nvidia/nemotron-3-super-120b-a12b:free", alias="free-nemotron-super"
+    )
+    free_gemma: str = Field(default="google/gemma-4-31b-it:free", alias="free-gemma")
+    free_gpt_oss: str = Field(default="openai/gpt-oss-20b:free", alias="free-gpt-oss")
+    free_north_code: str = Field(default="cohere/north-mini-code:free", alias="free-north-code")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 

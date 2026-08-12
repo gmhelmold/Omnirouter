@@ -36,9 +36,12 @@ def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, A
     """
     entries = []
 
-    # OpenRouter
+    # OpenRouter — slugs ending in ":free" are the no-cost tier; tag them so
+    # they stand out in Claude Code's /model picker.
     for key, display in config.openrouter_model_map.items():
-        entries.append(build_model_entry(f"claude-openrouter-{key}", f"{display} (OpenRouter)"))
+        is_free = str(display).endswith(":free")
+        suffix = "OpenRouter · FREE 🆓" if is_free else "OpenRouter"
+        entries.append(build_model_entry(f"claude-openrouter-{key}", f"{display} ({suffix})"))
 
     # Groq
     for key, display in config.groq_model_map.items():

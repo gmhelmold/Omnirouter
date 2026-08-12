@@ -6,12 +6,19 @@ opencode_bridge_endpoints:
 
 # Model maps (keys = suffix after provider prefix)
 openrouter_model_map:
+  # Premium / paid (valid current OpenRouter slugs)
   opus-5: "anthropic/claude-opus-5"
+  opus-4.8: "anthropic/claude-opus-4.8"
   sonnet-5: "anthropic/claude-sonnet-5"
-  haiku-5: "anthropic/claude-3.5-haiku"
-  deepseek: "deepseek/deepseek-chat"
-  qwen-coder: "qwen/qwen-2.5-coder-32b-instruct"
-  glm-5: "z-ai/glm-5.2"
+  haiku-4.5: "anthropic/claude-haiku-4.5"
+  deepseek: "deepseek/deepseek-chat-v3.1"
+  qwen-coder: "qwen/qwen3-coder"
+  # Free tier — any ":free" slug is auto-tagged FREE in the /model picker.
+  free-nemotron-ultra: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  free-nemotron-super: "nvidia/nemotron-3-super-120b-a12b:free"
+  free-gemma: "google/gemma-4-31b-it:free"
+  free-gpt-oss: "openai/gpt-oss-20b:free"
+  free-north-code: "cohere/north-mini-code:free"
 
 groq_model_map:
   llama3: "llama-3.3-70b-versatile"

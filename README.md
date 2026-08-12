@@ -40,13 +40,19 @@ Claude Code natively routes through Anthropic. Omnirouter replaces that one hop 
 
 | Group | Models |
 |---|---|
-| OpenRouter | `opus-5`, `sonnet-5`, `haiku-5`, `deepseek`, `qwen-coder`, `glm-5` |
+| OpenRouter (paid) | `opus-5`, `opus-4.8`, `sonnet-5`, `haiku-4.5`, `deepseek`, `qwen-coder` |
+| OpenRouter (**free** 🆓) | `free-nemotron-ultra`, `free-nemotron-super`, `free-gemma`, `free-gpt-oss`, `free-north-code` |
 | Groq | `llama3`, `mixtral`, `gemma` |
 | Gemini | `flash`, `pro`, `flash-8b` |
 | NIM | `llama3`, `nemotron`, `mixtral` |
 | Mistral | `large`, `small`, `codestral` |
 | Cerebras | `gpt-oss` (→ `gpt-oss-120b`), `glm` (→ `zai-glm-4.7`) |
 | opencode-bridge | `groq`, `gemini`, `mistral` groups |
+
+> The free OpenRouter models are keyed `free-*` and any slug ending in `:free`
+> is auto-tagged **`OpenRouter · FREE 🆓`** in the `/model` picker, so zero-cost
+> options are obvious at a glance. Edit the `openrouter_model_map` in
+> `gateway_config.yaml` to add or swap slugs (see https://openrouter.ai/models).
 
 ## Quick Start
 

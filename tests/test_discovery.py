@@ -53,6 +53,26 @@ class TestBuildDiscoveryPayload:
         assert "claude-cerebras-gpt-oss" in ids
         assert "claude-cerebras-glm" in ids
 
+    def test_openrouter_free_models_tagged(self):
+        config = MagicMock()
+        config.openrouter_model_map = {
+            "opus-5": "anthropic/claude-opus-5",
+            "free-gemma": "google/gemma-4-31b-it:free",
+        }
+        config.groq_model_map = {}
+        config.gemini_model_map = {}
+        config.nim_model_map = {}
+        config.mistral_model_map = {}
+        config.cerebras_model_map = {}
+        config.opencode_bridge_model_map = {}
+
+        payload = build_discovery_payload(config)
+        by_id = {e["id"]: e["display_name"] for e in payload["data"]}
+
+        # Paid model: no FREE tag. Free (":free") model: tagged.
+        assert "FREE" not in by_id["claude-openrouter-opus-5"]
+        assert "FREE" in by_id["claude-openrouter-free-gemma"]
+
     def test_ids_contain_claude(self):
         config = MagicMock()
         config.openrouter_model_map = {"opus-5": "Opus 5"}
