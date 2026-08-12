@@ -11,7 +11,7 @@ from gateway.config import (
     GatewayYamlConfig,
     GeminiModelMap,
     GroqModelMap,
-    OpencodeBridgeModelMap,
+    OpencodeModelMap,
     OpenRouterModelMap,
 )
 
@@ -23,7 +23,7 @@ class TestGatewayYamlConfig:
         assert isinstance(config.groq_model_map, GroqModelMap)
         assert isinstance(config.gemini_model_map, GeminiModelMap)
         assert isinstance(config.cerebras_model_map, CerebrasModelMap)
-        assert isinstance(config.opencode_bridge_model_map, OpencodeBridgeModelMap)
+        assert isinstance(config.opencode_model_map, OpencodeModelMap)
         assert isinstance(config.fallback_chains, FallbackChains)
 
     def test_cerebras_model_map_default(self):
@@ -31,20 +31,18 @@ class TestGatewayYamlConfig:
         assert config.cerebras_model_map.gpt_oss == "gpt-oss-120b"
         assert config.cerebras_model_map.glm == "zai-glm-4.7"
 
-    def test_opencode_bridge_endpoints_default(self):
+    def test_opencode_serve_defaults(self):
         config = GatewayYamlConfig()
-        endpoints = config.opencode_bridge_endpoints
-        assert "groq" in endpoints
-        assert "gemini" in endpoints
-        assert "mistral" in endpoints
+        assert config.opencode_serve_url.startswith("http")
+        assert config.opencode_agent == "general"
 
     def test_fallback_chains_default(self):
         config = GatewayYamlConfig()
         chains = config.fallback_chains
-        # The primary is implicit; chains list only the fallbacks after it.
-        assert chains.groq == ["opencode"]
-        assert chains.gemini == ["opencode"]
-        assert chains.mistral == ["opencode"]
+        # opencode is standalone now; no provider chains to it.
+        assert chains.groq == []
+        assert chains.gemini == []
+        assert chains.mistral == []
         assert chains.cerebras == []
         assert chains.openrouter == []
 
@@ -94,9 +92,8 @@ class TestModelMapProperties:
         assert isinstance(models, dict)
         assert "opus-5" in models
 
-    def test_opencode_bridge_model_map_property(self):
+    def test_opencode_model_map_property(self):
         config = GatewayConfig()
-        models = config.opencode_bridge_model_map
+        models = config.opencode_model_map
         assert isinstance(models, dict)
-        assert "groq" in models
-        assert "gemini" in models
+        assert "big-pickle" in models

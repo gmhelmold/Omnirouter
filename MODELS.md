@@ -24,44 +24,119 @@ add `?free=1` to see only free ones).
 
 Cost: 🆓 free · 💲 cheap · 💲💲 premium. Context/RPM are static (live quota not exposed).
 
-| Engine id | Model (provider) | Cost | Context | Notes / best for |
-|---|---|---|---|---|
-| `claude-groq-llama3` | Llama 3.3 70B (Groq) | 🆓 | ~128K | very low latency; quick edits, summaries, bulk text |
-| `claude-groq-mixtral` | Mixtral 8x7B (Groq) | 🆓 | 32K | fast MoE; short tasks |
-| `claude-groq-gemma` | Gemma2 9B (Groq) | 🆓 | 8K | tiny/fast; trivial mechanical work |
-| `claude-gemini-flash` | Gemini 1.5 Flash (Google) | 🆓 | 1M | huge context; long-doc reading/summarizing |
-| `claude-gemini-pro` | Gemini 1.5 Pro (Google) | 🆓 | 2M | strongest free reasoning + massive context |
-| `claude-gemini-flash-8b` | Gemini 1.5 Flash-8B | 🆓 | 1M | cheapest/fastest Gemini; light tasks |
-| `claude-mistral-large` | Mistral Large (Mistral) | 🆓 | 128K | solid general reasoning on free tier |
-| `claude-mistral-small` | Mistral Small | 🆓 | 32K | fast, light |
-| `claude-mistral-codestral` | Codestral (Mistral) | 🆓 | 256K | code-specialized |
-| `claude-cerebras-gpt-oss` | gpt-oss-120b (Cerebras) | 🆓* | ~128K | fastest tokens/sec; needs `CEREBRAS_API_KEY` |
-| `claude-cerebras-glm` | GLM-4.7 (Cerebras) | 🆓* | ~128K | fast; needs `CEREBRAS_API_KEY` |
-| `claude-openrouter-free-nemotron-super` | Nemotron Super 120B | 🆓 | ~256K | cheap bulk analysis; shared pool (429s) |
-| `claude-openrouter-free-nemotron-ultra` | Nemotron Ultra 550B | 🆓 | ~256K | bigger free model; shared pool |
-| `claude-openrouter-free-gemma` | Gemma 4 31B | 🆓 | large | free general |
-| `claude-openrouter-free-gpt-oss` | gpt-oss-20b | 🆓 | large | free general |
-| `claude-openrouter-free-north-code` | North Mini Code | 🆓 | large | free code model |
-| `claude-openrouter-deepseek` | DeepSeek V3.1 | 💲 | ~160K | reliable tool-use / agentic loops on a budget |
-| `claude-openrouter-qwen-coder` | Qwen3 Coder | 💲 | large | code-focused, cheap |
-| `claude-openrouter-sonnet-5` | Claude Sonnet 5 | 💲💲 | 200K | strong general (Anthropic pass-through) |
-| `claude-openrouter-opus-5` | Claude Opus 5 | 💲💲 | 200K | hardest reasoning, must-be-right work |
-| `claude-openrouter-opus-4.8` | Claude Opus 4.8 | 💲💲 | 200K | top reasoning alt |
-| `claude-openrouter-haiku-4.5` | Claude Haiku 4.5 | 💲 | 200K | fast cheap Anthropic |
-| `claude-nim-llama3` | Llama 3.1 70B (NVIDIA NIM) | — | 128K | NIM-hosted |
-| `claude-nim-nemotron` | Nemotron Ultra (NIM) | — | large | NIM-hosted |
-| `claude-nim-mixtral` | Mixtral 8x7B (NIM) | — | 32K | NIM-hosted |
-| `claude-opencode-*` | groq/gemini/mistral via opencode bridge | 🆓 | varies | experimental bridge (external dep) |
+Slugs verified live against each provider's `/models` on 2026-08-12.
 
-\* Cerebras engines need `CEREBRAS_API_KEY` in `.env`.
+### Groq — all free-tier
+
+| Engine id | Model | Context | Notes / best for |
+|---|---|---|---|
+| `claude-groq-llama3` | Llama 3.3 70B | ~128K | very low latency; quick edits, summaries, bulk text |
+| `claude-groq-llama-8b` | Llama 3.1 8B Instant | ~128K | fastest/cheapest Llama; trivial mechanical work |
+| `claude-groq-gpt-oss-120b` | gpt-oss 120B | ~128K | strong open reasoning on Groq speed |
+| `claude-groq-gpt-oss-20b` | gpt-oss 20B | ~128K | lighter gpt-oss |
+| `claude-groq-qwen3` | Qwen3.6 27B | large | general + code |
+| `claude-groq-compound` | Groq Compound | large | agentic/tool-augmented system |
+| `claude-groq-compound-mini` | Groq Compound Mini | large | lighter compound |
+
+`mixtral` and `gemma` were **retired by Groq** and removed from the menu.
+
+### Gemini — all free-tier (15 RPM)
+
+| Engine id | Model | Context | Notes / best for |
+|---|---|---|---|
+| `claude-gemini-flash` | Gemini Flash (latest) | 1M | huge context; long-doc reading/summarizing |
+| `claude-gemini-pro` | Gemini Pro (latest) | 1M+ | strongest free reasoning + massive context |
+| `claude-gemini-flash-lite` | Gemini Flash-Lite (latest) | 1M | cheapest/fastest Gemini; light tasks |
+| `claude-gemini-2.5-flash` / `-2.5-pro` / `-2.5-flash-lite` | Gemini 2.5 line | 1M | pinned 2.5 versions |
+| `claude-gemini-3-flash` | Gemini 3 Flash (preview) | 1M | newer flash |
+| `claude-gemini-3.1-pro` | Gemini 3.1 Pro (preview) | 1M+ | newer pro reasoning |
+| `claude-gemini-3.5-flash` / `-3.6-flash` | Gemini 3.5 / 3.6 Flash | 1M | latest flash lines |
+| `claude-gemini-gemma-31b` / `-gemma-26b` | Gemma 4 31B / 26B | large | open Gemma via Google |
+
+Gemini 1.5 (`flash` / `pro` / `flash-8b`) was **retired**; `flash`/`pro` now alias the rolling `-latest`.
+
+### Mistral — all free-tier
+
+| Engine id | Model | Context | Notes / best for |
+|---|---|---|---|
+| `claude-mistral-large` | Mistral Large (latest) | 128K | solid general reasoning |
+| `claude-mistral-medium` | Mistral Medium (latest) | 128K | mid tier |
+| `claude-mistral-small` | Mistral Small (latest) | 32K | fast, light |
+| `claude-mistral-codestral` | Codestral (latest) | 256K | code-specialized |
+| `claude-mistral-devstral` / `-devstral-medium` | Devstral (latest) | large | agentic coding |
+| `claude-mistral-magistral` | Magistral Small | large | reasoning |
+| `claude-mistral-ministral-14b` / `-8b` / `-3b` | Ministral | large | small/edge tiers |
+| `claude-mistral-code` | Mistral Code (latest) | large | coding assistant |
+
+### Cerebras — free, need `CEREBRAS_API_KEY`
+
+| Engine id | Model | Context | Notes |
+|---|---|---|---|
+| `claude-cerebras-gpt-oss` | gpt-oss 120B | ~128K | fastest tokens/sec |
+| `claude-cerebras-glm` | GLM-4.7 | ~128K | fast |
+
+Slugs unverified while the key is unset (`.env` has `CEREBRAS_API_KEY=` empty).
+
+### OpenRouter
+
+| Engine id | Model | Cost | Context | Notes |
+|---|---|---|---|---|
+| `claude-openrouter-free-nemotron-ultra` | Nemotron Ultra 550B | 🆓 | ~256K | shared pool (429s) |
+| `claude-openrouter-free-nemotron-super` | Nemotron Super 120B | 🆓 | ~256K | cheap bulk analysis |
+| `claude-openrouter-free-nemotron-nano` | Nemotron Nano 30B | 🆓 | large | free general |
+| `claude-openrouter-free-nemotron-nano-omni` | Nemotron Nano Omni 30B (reasoning) | 🆓 | large | free reasoning |
+| `claude-openrouter-free-nemotron-lightning` | Nemotron 3.5 Lightning | 🆓 | large | fast free |
+| `claude-openrouter-free-nemotron-12b-vl` | Nemotron Nano 12B VL | 🆓 | large | vision-language |
+| `claude-openrouter-free-nemotron-9b` | Nemotron Nano 9B | 🆓 | large | tiny free |
+| `claude-openrouter-free-gemma` | Gemma 4 31B | 🆓 | large | free general |
+| `claude-openrouter-free-gemma-26b` | Gemma 4 26B | 🆓 | large | free general |
+| `claude-openrouter-free-gpt-oss` | gpt-oss 20B | 🆓 | large | free general |
+| `claude-openrouter-free-north-code` | North Mini Code | 🆓 | large | free code model |
+| `claude-openrouter-free-ling-tiny` | Ling 3.0 Tiny | 🆓 | large | free tiny |
+| `claude-openrouter-free-lfm` | LFM 2.5 2.6B | 🆓 | large | free tiny |
+| `claude-openrouter-free-laguna-s` / `-laguna-xs` | Poolside Laguna 2.1 | 🆓 | large | free code |
+| `claude-openrouter-deepseek` | DeepSeek V3.1 | 💲 | ~160K | reliable tool-use / agentic loops |
+| `claude-openrouter-qwen-coder` | Qwen3 Coder | 💲 | large | code-focused, cheap |
+| `claude-openrouter-haiku-4.5` | Claude Haiku 4.5 | 💲 | 200K | fast cheap Anthropic |
+| `claude-openrouter-sonnet-5` | Claude Sonnet 5 | 💲💲 | 200K | strong general |
+| `claude-openrouter-opus-4.8` | Claude Opus 4.8 | 💲💲 | 200K | top reasoning alt |
+| `claude-openrouter-opus-5` | Claude Opus 5 | 💲💲 | 200K | hardest reasoning, must-be-right work |
+
+### NIM (NVIDIA-hosted; needs `NIM_BASE_URL` + `NIM_API_KEY`, both unset)
+
+`claude-nim-llama3` (Llama 3.1 70B) · `claude-nim-nemotron` (Nemotron Ultra) · `claude-nim-mixtral` (Mixtral 8x7B).
+
+### opencode — opencode's own hosted models (all free)
+
+Backed by a local `opencode serve` instance (session API), bridged to Anthropic
+by the gateway. Start it with `./scripts/opencode-serve.sh` (default
+`http://127.0.0.1:5051`; set `opencode_serve_url` in `gateway_config.yaml`). Ids
+are flat `claude-opencode-<key>`. **Text-only** for now — tool-use is not bridged
+through opencode's agentic loop. Discovery auto-merges any extra models the live
+`opencode serve` reports.
+
+| Engine id | opencode modelID |
+|---|---|
+| `claude-opencode-big-pickle` | big-pickle |
+| `claude-opencode-deepseek-v4-flash` | deepseek-v4-flash-free |
+| `claude-opencode-hy3` | hy3-free |
+| `claude-opencode-mimo` | mimo-v2.5-free |
+| `claude-opencode-laguna-s` | laguna-s-2.1-free |
+| `claude-opencode-ling-tiny` | ling-3.0-tiny-free |
+| `claude-opencode-nemotron-lightning` | nemotron-3.5-lightning-free |
+| `claude-opencode-nemotron-ultra` | nemotron-3-ultra-free |
+
+The gateway creates a throwaway session per request, flattens the conversation
+into one prompt, and deletes the session after. If `opencode serve` is down the
+backend returns a clear `connection_error`.
 
 ## Routing heuristics
 
-- **Zero cost first**: `claude-groq-llama3` (speed) / `claude-gemini-flash` (big context) /
-  `claude-mistral-large` for routine work.
+- **Zero cost first**: `claude-groq-llama3` (speed) / `claude-gemini-flash` (big context, 1M) /
+  `claude-mistral-large` for routine work. `claude-groq-llama-8b` for trivial mechanical work.
 - **Tool-use / agentic loops**: OpenRouter pass-through is most reliable
   (`claude-openrouter-deepseek` cheap, `claude-openrouter-opus-5` premium).
-- **Big inputs**: `claude-gemini-pro` (2M) or `claude-gemini-flash` (1M).
+- **Big inputs**: `claude-gemini-pro` or `claude-gemini-flash` (1M).
 - **Hard problems only**: `claude-openrouter-opus-5`.
 - **Add a model**: edit any `*_model_map` in `gateway_config.yaml`; `:free` slugs, `free-*`
   keys, and any provider in `free_tier_providers` are auto-tagged FREE.

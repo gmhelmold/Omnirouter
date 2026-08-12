@@ -88,8 +88,8 @@ async def test_fallback_on_early_retryable_error():
 
     events = await _collect(router.route_with_fallback("claude-groq-llama3", {}, {}))
     assert [e.event for e in events] == ["message_start", "content_block_delta", "message_stop"]
-    # model key preserved, remapped to opencode provider form
-    assert fb.received_model == "claude-opencode-groq-llama3"
+    # model key preserved, remapped to the fallback backend's flat prefix
+    assert fb.received_model == "claude-opencode-llama3"
 
 
 @pytest.mark.asyncio

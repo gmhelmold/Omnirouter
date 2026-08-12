@@ -18,16 +18,22 @@ model list; `GET /v1/models?free=1` returns only the free ones.
 | Need | Engine id (free) | Notes |
 |---|---|---|
 | Fast quick edits / summaries / bulk text | `claude-groq-llama3` | ~128K ctx, very low latency |
-| Very large input (long docs, whole files) | `claude-gemini-pro` (2M) / `claude-gemini-flash` (1M) | Google free tier, 15 RPM |
+| Trivial mechanical work, fastest | `claude-groq-llama-8b` | Llama 3.1 8B Instant |
+| Very large input (long docs, whole files) | `claude-gemini-pro` / `claude-gemini-flash` (1M) | Google free tier, 15 RPM |
 | Cheap bulk analysis, some latency OK | `claude-openrouter-free-nemotron-super` | ~256K, shared pool (429s) |
 | General reasoning, free | `claude-mistral-large` | 128K |
 | Code-specialized, free | `claude-mistral-codestral` | 256K |
 | Fastest tokens/sec (needs CEREBRAS_API_KEY) | `claude-cerebras-gpt-oss` | ~128K, 5 RPM |
 
-Other free ids: `claude-groq-mixtral`, `claude-groq-gemma`, `claude-gemini-flash-8b`,
-`claude-mistral-small`, `claude-openrouter-free-nemotron-ultra`,
-`claude-openrouter-free-gemma`, `claude-openrouter-free-gpt-oss`,
-`claude-openrouter-free-north-code`. The `claude-opencode-*` ids are an experimental bridge.
+Other free ids — Groq: `claude-groq-gpt-oss-120b`, `-gpt-oss-20b`, `-qwen3`, `-compound`,
+`-compound-mini`. Gemini: `claude-gemini-flash-lite`, `-2.5-flash`, `-2.5-pro`, `-3-flash`,
+`-3.1-pro`, `-3.5-flash`, `-3.6-flash`, `-gemma-31b`, `-gemma-26b`. Mistral: `claude-mistral-small`,
+`-medium`, `-devstral`, `-magistral`, `-ministral-8b`, `-code`. OpenRouter free:
+`claude-openrouter-free-nemotron-ultra`, `-nemotron-nano`, `-nemotron-lightning`, `-nemotron-9b`,
+`-gemma`, `-gemma-26b`, `-gpt-oss`, `-north-code`, `-ling-tiny`, `-lfm`, `-laguna-s`.
+The `claude-opencode-*` ids are opencode's own hosted models (e.g. `big-pickle`,
+`deepseek-v4-flash`, `nemotron-ultra`), served by a local `opencode serve` and text-only.
+(`mixtral`/`gemma` on Groq and Gemini 1.5 were retired — no longer in the menu.)
 
 ### Paid engines — only after explicit user authorization
 

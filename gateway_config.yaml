@@ -1,10 +1,10 @@
-# Provider endpoints for opencode-bridge (one per provider)
-opencode_bridge_endpoints:
-  groq: "http://localhost:5001"
-  gemini: "http://localhost:5002"
-  mistral: "http://localhost:5003"
+# opencode is a standalone provider backed by a local `opencode serve`
+# instance (session API). Start it with ./scripts/opencode-serve.sh.
+opencode_serve_url: "http://127.0.0.1:5051"
+opencode_agent: "general"
 
-# Model maps (keys = suffix after provider prefix)
+# Model maps (keys = suffix after the `claude-<provider>-` prefix).
+# Slugs verified live against each provider's /models on 2026-08-12.
 openrouter_model_map:
   # Premium / paid (valid current OpenRouter slugs)
   opus-5: "anthropic/claude-opus-5"
@@ -13,22 +13,47 @@ openrouter_model_map:
   haiku-4.5: "anthropic/claude-haiku-4.5"
   deepseek: "deepseek/deepseek-chat-v3.1"
   qwen-coder: "qwen/qwen3-coder"
-  # Free tier — any ":free" slug is auto-tagged FREE in the /model picker.
+  # Free tier — any ":free" slug (or "free-*" key) is auto-tagged FREE 🆓.
   free-nemotron-ultra: "nvidia/nemotron-3-ultra-550b-a55b:free"
   free-nemotron-super: "nvidia/nemotron-3-super-120b-a12b:free"
+  free-nemotron-nano: "nvidia/nemotron-3-nano-30b-a3b:free"
+  free-nemotron-nano-omni: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+  free-nemotron-lightning: "nvidia/nemotron-3.5-lightning:free"
+  free-nemotron-12b-vl: "nvidia/nemotron-nano-12b-v2-vl:free"
+  free-nemotron-9b: "nvidia/nemotron-nano-9b-v2:free"
   free-gemma: "google/gemma-4-31b-it:free"
+  free-gemma-26b: "google/gemma-4-26b-a4b-it:free"
   free-gpt-oss: "openai/gpt-oss-20b:free"
   free-north-code: "cohere/north-mini-code:free"
+  free-ling-tiny: "inclusionai/ling-3.0-tiny:free"
+  free-lfm: "liquid/lfm-2.5-2.6b:free"
+  free-laguna-s: "poolside/laguna-s-2.1:free"
+  free-laguna-xs: "poolside/laguna-xs-2.1:free"
 
 groq_model_map:
+  # All Groq chat models are free-tier.
   llama3: "llama-3.3-70b-versatile"
-  mixtral: "mixtral-8x7b-32768"
-  gemma: "gemma2-9b-it"
+  llama-8b: "llama-3.1-8b-instant"
+  gpt-oss-120b: "openai/gpt-oss-120b"
+  gpt-oss-20b: "openai/gpt-oss-20b"
+  qwen3: "qwen/qwen3.6-27b"
+  compound: "groq/compound"
+  compound-mini: "groq/compound-mini"
 
 gemini_model_map:
-  flash: "gemini-1.5-flash"
-  pro: "gemini-1.5-pro"
-  flash-8b: "gemini-1.5-flash-8b"
+  # gemini-1.5-* retired; using current 2.5 / 3.x lines + rolling aliases.
+  flash: "gemini-flash-latest"
+  pro: "gemini-pro-latest"
+  flash-lite: "gemini-flash-lite-latest"
+  "2.5-flash": "gemini-2.5-flash"
+  "2.5-pro": "gemini-2.5-pro"
+  "2.5-flash-lite": "gemini-2.5-flash-lite"
+  "3-flash": "gemini-3-flash-preview"
+  "3.1-pro": "gemini-3.1-pro-preview"
+  "3.5-flash": "gemini-3.5-flash"
+  "3.6-flash": "gemini-3.6-flash"
+  gemma-31b: "gemma-4-31b-it"
+  gemma-26b: "gemma-4-26b-a4b-it"
 
 nim_model_map:
   llama3: "meta/llama-3.1-70b-instruct"
@@ -37,32 +62,43 @@ nim_model_map:
 
 mistral_model_map:
   large: "mistral-large-latest"
+  medium: "mistral-medium-latest"
   small: "mistral-small-latest"
   codestral: "codestral-latest"
+  devstral: "devstral-latest"
+  devstral-medium: "devstral-medium-latest"
+  magistral: "magistral-small-latest"
+  ministral-14b: "ministral-14b-latest"
+  ministral-8b: "ministral-8b-latest"
+  ministral-3b: "ministral-3b-latest"
+  code: "mistral-code-latest"
 
 cerebras_model_map:
+  # Requires CEREBRAS_API_KEY; slugs unverified while the key is unset.
   gpt-oss: "gpt-oss-120b"
   glm: "zai-glm-4.7"
 
-opencode_bridge_model_map:
-  groq:
-    llama3: "groq/llama-3.3-70b-versatile"
-    mixtral: "groq/mixtral-8x7b-32768"
-  gemini:
-    flash: "gemini/gemini-1.5-flash"
-    pro: "gemini/gemini-1.5-pro"
-  mistral:
-    large: "mistral/mistral-large-latest"
-    small: "mistral/mistral-small-latest"
+# opencode's own hosted models (served by `opencode serve`). Keys become
+# `claude-opencode-<key>`; values are opencode provider modelIDs. All free.
+# Discovery also auto-merges whatever the live opencode instance reports.
+opencode_model_map:
+  big-pickle: "big-pickle"
+  deepseek-v4-flash: "deepseek-v4-flash-free"
+  hy3: "hy3-free"
+  mimo: "mimo-v2.5-free"
+  laguna-s: "laguna-s-2.1-free"
+  ling-tiny: "ling-3.0-tiny-free"
+  nemotron-lightning: "nemotron-3.5-lightning-free"
+  nemotron-ultra: "nemotron-3-ultra-free"
 
 # Fallback chains per provider (registered backend provider_names).
 # The primary backend (owner of the model prefix) is implicit; these are the
-# fallbacks tried after it, in order. "opencode" reruns the same provider via
-# its opencode-bridge instance, so the shared model key maps cleanly.
+# fallbacks tried after it, in order. opencode is standalone (its models are
+# not reachable through any other provider), so no chain routes to it.
 fallback_chains:
-  groq: ["opencode"]
-  gemini: ["opencode"]
-  mistral: ["opencode"]
+  groq: []
+  gemini: []
+  mistral: []
   nim: []
   cerebras: []
   openrouter: []
