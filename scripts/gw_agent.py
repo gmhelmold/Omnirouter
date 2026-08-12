@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
+# ruff: noqa: T201, E501, TRY300  (this is a CLI: stdout carries the answer, stderr the
+# live trace, so print() is the interface; tool-schema literals run long by design; and
+# run_tool's whole body is a defensive guard, so its returns stay inside the try.)
 """gw_agent — a self-contained agent loop that runs on a GATEWAY model.
 
 It talks to the local Omnirouter gateway (Anthropic Messages API) with a chosen
-free model id and runs a real tool-use loop (read / list / grep / bash, plus
-write / edit in worker mode) until the model stops. Because it calls the gateway
-directly (127.0.0.1:8787, which self-authenticates with the providers' keys), it
-works regardless of how Claude Code itself is authenticated (OAuth or api-key) —
-the codex-plugin trick: shell out instead of routing Claude's own inference.
+free model id and runs a real tool-use loop until the model stops. Because it calls
+the gateway directly (127.0.0.1:8787, which self-authenticates with the providers'
+keys), it works regardless of how Claude Code itself is authenticated (OAuth or
+api-key) — the codex-plugin trick: shell out instead of routing Claude's inference.
+
+Tools & safety:
+- reader mode: read_file, list_dir, grep, bash. File reads and the shell are
+  confined to --cwd: file paths that escape it are rejected, and reader's bash is
+  guarded (best-effort) against writes/deletes/network so the "reader" role can't
+  quietly mutate the tree. Use it for research/analysis.
+- worker mode: the above plus write_file / edit_file and an UNGUARDED bash. It can
+  modify files under --cwd. Only spawn worker on tasks you actually want to write.
 
 Run it as a BACKGROUND Bash task so it shows up in the running-tasks widget and
 costs no Claude tokens:
@@ -21,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import urllib.error
@@ -29,12 +40,19 @@ import urllib.request
 GATEWAY = "http://127.0.0.1:8787/v1/messages"
 
 READER_TOOLS = ["read_file", "list_dir", "grep", "bash"]
-WORKER_TOOLS = READER_TOOLS + ["write_file", "edit_file"]
+WORKER_TOOLS = [*READER_TOOLS, "write_file", "edit_file"]
+
+# reader's bash may not write, delete, or reach the network (best-effort denylist).
+# stderr redirects (2>, &>) are allowed; stdout redirects (>, >>) are not.
+_UNSAFE_BASH = re.compile(
+    r"\b(rm|rmdir|mv|dd|truncate|shred|tee|chmod|chown|mkdir|ln|curl|wget|nc|ncat|ssh|scp|rsync)\b"
+    r"|(?<![0-9&])>>?"
+)
 
 TOOL_SCHEMAS = {
     "read_file": {
         "name": "read_file",
-        "description": "Read a UTF-8 text file and return its contents.",
+        "description": "Read a UTF-8 text file (path relative to the working dir) and return its contents.",
         "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
     },
     "list_dir": {
@@ -76,12 +94,20 @@ def _clip(s: str) -> str:
     return s if len(s) <= MAX_OUT else s[:MAX_OUT] + f"\n...[truncated {len(s) - MAX_OUT} chars]"
 
 
-def run_tool(name: str, args: dict, cwd: pathlib.Path) -> str:
+def _safe_path(cwd: pathlib.Path, rel: str) -> pathlib.Path:
+    """Resolve `rel` under `cwd`, rejecting anything that escapes it (``..``/absolute)."""
+    p = (cwd / rel).resolve()
+    if p != cwd and cwd not in p.parents:
+        raise ValueError(f"path escapes working dir: {rel}")
+    return p
+
+
+def run_tool(name: str, args: dict, cwd: pathlib.Path, mode: str) -> str:
     try:
         if name == "read_file":
-            return _clip((cwd / args["path"]).read_text(encoding="utf-8", errors="replace"))
+            return _clip(_safe_path(cwd, args["path"]).read_text(encoding="utf-8", errors="replace"))
         if name == "list_dir":
-            p = cwd / args.get("path", ".")
+            p = _safe_path(cwd, args.get("path", "."))
             return "\n".join(sorted(e.name + ("/" if e.is_dir() else "") for e in p.iterdir()))
         if name == "grep":
             target = args.get("path", ".")
@@ -89,13 +115,17 @@ def run_tool(name: str, args: dict, cwd: pathlib.Path) -> str:
                                  capture_output=True, text=True, timeout=30)
             return _clip(out.stdout or "(no matches)")
         if name == "bash":
-            out = subprocess.run(args["cmd"], cwd=cwd, shell=True, capture_output=True, text=True, timeout=120)
+            cmd = args["cmd"]
+            if mode == "reader" and _UNSAFE_BASH.search(cmd):
+                return "ERROR: reader mode blocks writes/deletes/network in bash — re-run in worker mode (-w) if this is intended."
+            out = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=120)
             return _clip((out.stdout or "") + (out.stderr or "") or "(no output)")
         if name == "write_file":
-            (cwd / args["path"]).write_text(args["content"], encoding="utf-8")
+            p = _safe_path(cwd, args["path"])
+            p.write_text(args["content"], encoding="utf-8")
             return f"wrote {args['path']} ({len(args['content'])} chars)"
         if name == "edit_file":
-            fp = cwd / args["path"]
+            fp = _safe_path(cwd, args["path"])
             text = fp.read_text(encoding="utf-8")
             if args["old"] not in text:
                 return "ERROR: old string not found"
@@ -116,8 +146,7 @@ DEFAULT_FALLBACKS = [
 
 
 def _post(model: str, body: dict) -> dict:
-    body = {**body, "model": model}
-    req = urllib.request.Request(GATEWAY, data=json.dumps(body).encode(),
+    req = urllib.request.Request(GATEWAY, data=json.dumps({**body, "model": model}).encode(),
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=600) as r:
         return json.loads(r.read())
@@ -142,10 +171,33 @@ def call_gateway(engines: list[str], state: dict, body: dict, log) -> dict:
                 continue
             raise
         except Exception as e:  # transport
-            last = f"{type(e).__name__}"
+            last = type(e).__name__
             log(f"  ! {model} → {last}, falling back")
             state["i"] += 1
     raise RuntimeError(f"all engines exhausted (last: {last})")
+
+
+def build_engine_chain(model: str, fallback: str) -> list[str]:
+    """Primary + fallbacks, de-duped, primary first."""
+    fallbacks = fallback.split(",") if fallback else DEFAULT_FALLBACKS
+    engines: list[str] = []
+    seen: set[str] = set()
+    for m in [model, *fallbacks]:
+        m = m.strip()
+        if m and m not in seen:
+            seen.add(m)
+            engines.append(m)
+    return engines
+
+
+def _arg_hint(tool_use: dict) -> str:
+    """Short one-value hint of a tool call for the progress line."""
+    inp = tool_use.get("input", {})
+    for k in ("cmd", "path", "pattern"):
+        if k in inp:
+            v = str(inp[k])
+            return v if len(v) <= 40 else v[:40] + "…"
+    return ""
 
 
 def main() -> int:
@@ -161,17 +213,9 @@ def main() -> int:
     args = ap.parse_args()
 
     cwd = pathlib.Path(args.cwd).resolve()
-    tool_names = WORKER_TOOLS if args.mode == "worker" else READER_TOOLS
-    tools = [TOOL_SCHEMAS[t] for t in tool_names]
+    tools = [TOOL_SCHEMAS[t] for t in (WORKER_TOOLS if args.mode == "worker" else READER_TOOLS)]
     messages = [{"role": "user", "content": args.task}]
-
-    # engine chain: primary + fallbacks (de-duped, primary first)
-    fallbacks = args.fallback.split(",") if args.fallback else DEFAULT_FALLBACKS
-    engines, seen = [], set()
-    for m in [args.model, *fallbacks]:
-        m = m.strip()
-        if m and m not in seen:
-            seen.add(m); engines.append(m)
+    engines = build_engine_chain(args.model, args.fallback)
     state = {"i": 0}
 
     def log(msg: str) -> None:
@@ -199,16 +243,15 @@ def main() -> int:
         tool_uses = [b for b in blocks if b.get("type") == "tool_use"]
         now = engines[state["i"]]
 
-        if tool_uses:
-            log(f"│  step {step:<2} [{now}] → " + ", ".join(f"{t['name']}({_arg_hint(t)})" for t in tool_uses))
-        else:
+        if not tool_uses:
             log(f"│  step {step:<2} [{now}] ✓ done")
             break
+        log(f"│  step {step:<2} [{now}] → " + ", ".join(f"{t['name']}({_arg_hint(t)})" for t in tool_uses))
 
         messages.append({"role": "assistant", "content": blocks})
         results = []
         for tu in tool_uses:
-            out = run_tool(tu["name"], tu.get("input", {}), cwd)
+            out = run_tool(tu["name"], tu.get("input", {}), cwd, args.mode)
             results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": out})
         messages.append({"role": "user", "content": results})
     else:
@@ -219,16 +262,6 @@ def main() -> int:
     if args.out:
         pathlib.Path(args.out).write_text(final_text + "\n", encoding="utf-8")
     return 0
-
-
-def _arg_hint(tool_use: dict) -> str:
-    """Short one-value hint of a tool call for the progress line."""
-    inp = tool_use.get("input", {})
-    for k in ("cmd", "path", "pattern"):
-        if k in inp:
-            v = str(inp[k])
-            return v if len(v) <= 40 else v[:40] + "…"
-    return ""
 
 
 if __name__ == "__main__":
