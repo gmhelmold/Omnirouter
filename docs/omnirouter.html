@@ -1,254 +1,276 @@
-<title>Omnirouter — how it works</title>
+<title>Omnirouter — setup & guide</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{
-    --ground:#f4f6f8; --panel:#ffffff; --panel-2:#eef1f5;
-    --ink:#14171c; --muted:#586074; --faint:#8b93a6;
-    --line:#dde2ea; --line-strong:#c6cddb;
-    --accent:#0c7d8c; --accent-soft:#d3ebee; --accent-ink:#075863;
-    --ok:#1f7a4d; --ok-soft:#dcefe3;
-    --warn:#9a6a12; --warn-soft:#f3e7cc;
-    --down:#a23b3b; --down-soft:#f2dede;
-    --shadow:0 1px 2px rgba(20,23,28,.05),0 6px 20px rgba(20,23,28,.06);
-    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --bg:#ffffff; --bg-1:#fbfbfc; --bg-2:#f2f3f5;
+    --panel:#ffffff; --panel-2:#f9f9fb;
+    --text:#08090a; --text-2:#3b4048; --muted:#676c75; --faint:#989da7;
+    --border:rgba(9,9,11,.09); --border-2:rgba(9,9,11,.14);
+    --accent:#5e6ad2; --accent-2:#4c57bd; --accent-text:#4a53b8; --accent-soft:rgba(94,106,210,.09);
+    --ok:#3c8f5c; --ok-soft:rgba(60,143,92,.12);
+    --warn:#8f6d16; --warn-soft:rgba(143,109,22,.13);
+    --glow:rgba(94,106,210,.12);
+    --shadow:0 1px 2px rgba(9,9,11,.04), 0 4px 20px rgba(9,9,11,.05);
+    --mono:"SFMono-Regular",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --ground:#0d1014; --panel:#151a21; --panel-2:#1b212a;
-      --ink:#e8ecf3; --muted:#9aa4b6; --faint:#6b7488;
-      --line:#232a34; --line-strong:#333c49;
-      --accent:#38c0cf; --accent-soft:#123037; --accent-ink:#8fe3ec;
-      --ok:#54c98a; --ok-soft:#12281d;
-      --warn:#e0b055; --warn-soft:#2c2413;
-      --down:#e2807f; --down-soft:#2c1818;
-      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
-    }
-  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#08090a; --bg-1:#0b0c0e; --bg-2:#17191d; --panel:#0f1113; --panel-2:#131519;
+    --text:#f7f8f8; --text-2:#c4c8cf; --muted:#8a8f98; --faint:#5c616a;
+    --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.13);
+    --accent:#5e6ad2; --accent-2:#7c85f5; --accent-text:#a6adff; --accent-soft:rgba(124,133,245,.12);
+    --ok:#4cc38a; --ok-soft:rgba(76,195,138,.12); --warn:#d8a441; --warn-soft:rgba(216,164,65,.13);
+    --glow:rgba(94,106,210,.22); --shadow:0 0 0 1px rgba(255,255,255,.008);
+  }}
   :root[data-theme="dark"]{
-    --ground:#0d1014; --panel:#151a21; --panel-2:#1b212a;
-    --ink:#e8ecf3; --muted:#9aa4b6; --faint:#6b7488;
-    --line:#232a34; --line-strong:#333c49;
-    --accent:#38c0cf; --accent-soft:#123037; --accent-ink:#8fe3ec;
-    --ok:#54c98a; --ok-soft:#12281d;
-    --warn:#e0b055; --warn-soft:#2c2413;
-    --down:#e2807f; --down-soft:#2c1818;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    --bg:#08090a; --bg-1:#0b0c0e; --bg-2:#17191d; --panel:#0f1113; --panel-2:#131519;
+    --text:#f7f8f8; --text-2:#c4c8cf; --muted:#8a8f98; --faint:#5c616a;
+    --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.13);
+    --accent:#5e6ad2; --accent-2:#7c85f5; --accent-text:#a6adff; --accent-soft:rgba(124,133,245,.12);
+    --ok:#4cc38a; --ok-soft:rgba(76,195,138,.12); --warn:#d8a441; --warn-soft:rgba(216,164,65,.13);
+    --glow:rgba(94,106,210,.22); --shadow:0 0 0 1px rgba(255,255,255,.008);
   }
+
   *{box-sizing:border-box}
-  html{-webkit-text-size-adjust:100%}
-  body{
-    margin:0;background:var(--ground);color:var(--ink);
-    font-family:var(--sans);line-height:1.6;
-    font-size:16px;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:900px;margin:0 auto;padding:clamp(28px,5vw,72px) clamp(20px,5vw,40px)}
-  a{color:var(--accent-ink);text-decoration:none;border-bottom:1px solid var(--line-strong)}
-  a:hover{border-color:var(--accent)}
+  html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+  body{margin:0; background:var(--bg); color:var(--text-2); font-family:var(--sans); font-size:15px; line-height:1.6; letter-spacing:-.006em; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; position:relative}
+  body::before{content:""; position:fixed; inset:0 0 auto 0; height:560px; pointer-events:none; z-index:0; background:radial-gradient(58% 90% at 50% -12%, var(--glow), transparent 72%)}
+  .wrap{position:relative; z-index:1; max-width:900px; margin:0 auto; padding:clamp(30px,6vw,84px) clamp(20px,5vw,40px) 88px}
+
+  a{color:var(--accent-text); text-decoration:none} a:hover{color:var(--accent-2)}
   code,.mono{font-family:var(--mono)}
-  code{background:var(--panel-2);padding:.1em .38em;border-radius:5px;font-size:.86em;color:var(--accent-ink)}
-  h1,h2,h3{text-wrap:balance;line-height:1.18;margin:0}
-  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
-  section{margin-top:clamp(44px,6vw,72px)}
-  p{margin:0 0 1em;max-width:66ch}
-  .lede{font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:60ch}
+  code{background:var(--bg-2); padding:.12em .4em; border-radius:5px; font-size:.85em; color:var(--text); letter-spacing:0}
+  h1,h2,h3,h4{color:var(--text); text-wrap:balance; margin:0; font-weight:600; line-height:1.14; letter-spacing:-.022em}
+  .eyebrow{font-size:12px; font-weight:590; letter-spacing:.01em; color:var(--accent-text); margin:0 0 12px}
+  section{margin-top:clamp(52px,7vw,88px); scroll-margin-top:24px}
+  section>h2{font-size:clamp(20px,3.2vw,26px); margin-bottom:16px}
+  p{margin:0 0 1em; max-width:64ch; color:var(--muted)}
+  .lede{font-size:clamp(16px,2.1vw,18px); color:var(--muted); max-width:54ch; letter-spacing:-.011em}
 
-  /* hero */
-  .hero{border:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--panel-2));border-radius:18px;padding:clamp(26px,4vw,44px);box-shadow:var(--shadow)}
-  .hero h1{font-family:var(--mono);font-weight:600;font-size:clamp(30px,6vw,52px);letter-spacing:-.02em}
-  .hero .k{color:var(--accent)}
-  .hero .lede{margin-top:16px}
-  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
-  .p-free{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
-  .p-paid{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
-  .p-acc{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
-  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  /* hero + sticky nav */
+  .hero{padding-top:clamp(6px,3vw,24px)}
+  .hero h1{font-size:clamp(36px,7.6vw,64px); letter-spacing:-.038em; line-height:1.0}
+  .hero h1 .k{color:var(--muted)}
+  .hero .lede{margin-top:22px}
+  .badges{display:flex; flex-wrap:wrap; gap:8px; margin-top:28px}
+  .pill{display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:510; padding:4px 11px; border-radius:7px; border:1px solid var(--border-2); background:var(--panel-2); color:var(--text-2); white-space:nowrap; letter-spacing:0}
+  .pill.free{background:var(--ok-soft); color:var(--ok); border-color:transparent}
+  .pill.paid{background:var(--warn-soft); color:var(--warn); border-color:transparent}
+  .pill.acc{background:var(--accent-soft); color:var(--accent-text); border-color:transparent}
+  .pill.dot::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
 
-  /* flow diagram */
-  .flow{width:100%;height:auto;display:block;margin:6px 0}
-  .flow text{font-family:var(--mono)}
+  nav{display:flex; flex-wrap:wrap; gap:6px; margin-top:30px; padding-top:22px; border-top:1px solid var(--border)}
+  nav a{font-size:13px; color:var(--muted); padding:5px 10px; border-radius:7px; border:1px solid transparent}
+  nav a:hover{color:var(--text); background:var(--panel-2); border-color:var(--border)}
 
-  .grid{display:grid;gap:14px}
-  @media(min-width:620px){.cols-2{grid-template-columns:1fr 1fr}.cols-3{grid-template-columns:repeat(3,1fr)}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow)}
-  .card h3{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:.01em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .card p{font-size:14px;color:var(--muted);margin:0}
+  /* quickstart steps (a real sequence -> numbered) */
+  .steps{display:flex; flex-direction:column; gap:14px; counter-reset:s}
+  .step{display:grid; grid-template-columns:34px 1fr; gap:16px; align-items:start; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow)}
+  .step::before{counter-increment:s; content:counter(s); display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:var(--accent-soft); color:var(--accent-text); font-family:var(--mono); font-weight:590; font-size:14px}
+  .step h3{font-size:15px; margin-bottom:5px}
+  .step p{font-size:14px; margin:0}
+  pre{margin:10px 0 0; background:var(--bg-2); border:1px solid var(--border); border-radius:9px; padding:11px 13px; overflow-x:auto; font-family:var(--mono); font-size:12.5px; color:var(--text); line-height:1.5}
+  pre .c{color:var(--faint)}
 
-  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
-  table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px;background:var(--panel)}
-  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line)}
-  thead th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  /* pipeline */
+  .pipe{display:flex; align-items:center; margin:6px 0 4px}
+  .node{flex:0 0 auto; background:var(--panel); border:1px solid var(--border-2); border-radius:12px; padding:14px 16px; text-align:center; box-shadow:var(--shadow)}
+  .node .t{color:var(--text); font-weight:590; font-size:14px}
+  .node .s{color:var(--muted); font-size:11.5px; margin-top:2px}
+  .node.gw{border-color:var(--accent); background:var(--accent-soft)}
+  .node.gw .t{color:var(--accent-text)} .node.gw .s{color:var(--accent-text); opacity:.85}
+  .wire{flex:1 1 0; position:relative; height:2px; min-width:24px; background:linear-gradient(90deg,var(--border),var(--border-2),var(--border))}
+  .wire .pkt{position:absolute; top:50%; left:0; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--accent-2); box-shadow:0 0 0 3px var(--accent-soft); animation:travel 2.6s cubic-bezier(.55,0,.45,1) infinite}
+  .wire.w2 .pkt{animation-delay:1.3s}
+  .lbl{display:flex; justify-content:space-between; margin-top:10px; font-family:var(--mono); font-size:10.5px; color:var(--faint)}
+  @keyframes travel{0%{left:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:100%;opacity:0}}
+  @media(max-width:560px){
+    .pipe{flex-direction:column; align-items:stretch} .node{width:100%}
+    .wire{width:2px; height:24px; min-width:0; margin:0 auto; background:linear-gradient(180deg,var(--border),var(--border-2),var(--border))}
+    .wire .pkt{left:50%; top:0; margin:0 0 0 -3.5px; animation:travelV 2.6s cubic-bezier(.55,0,.45,1) infinite}
+    @keyframes travelV{0%{top:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:100%;opacity:0}}
+  }
+  @media(prefers-reduced-motion:reduce){.wire .pkt{animation:none; left:50%; opacity:.9}}
+
+  .grid{display:grid; gap:12px}
+  @media(min-width:640px){.cols-2{grid-template-columns:1fr 1fr}.cols-3{grid-template-columns:repeat(3,1fr)}}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px 20px; box-shadow:var(--shadow)}
+  .card h3{font-size:15px; margin-bottom:7px; letter-spacing:-.016em}
+  .card p{font-size:13.5px; color:var(--muted); margin:0}
+  .card .k{font-family:var(--mono); font-size:11px; color:var(--accent-text); display:block; margin-bottom:9px; letter-spacing:0}
+
+  .tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow)}
+  table{border-collapse:collapse; width:100%; font-size:14px; min-width:520px; background:var(--panel)}
+  th,td{text-align:left; padding:11px 16px; border-bottom:1px solid var(--border); vertical-align:middle}
+  thead th{font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--faint); font-weight:590}
   tbody tr:last-child td{border-bottom:none}
-  td .mono{font-size:13px;color:var(--accent-ink)}
   tbody tr:hover{background:var(--panel-2)}
+  td .mono{font-size:13px; color:var(--accent-text)}
+  td.var{white-space:nowrap}
 
-  /* fixes timeline */
-  .log{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:2px}
-  .log li{position:relative;padding:16px 0 16px 28px;border-bottom:1px solid var(--line)}
-  .log li:last-child{border-bottom:none}
-  .log li::before{content:"";position:absolute;left:4px;top:22px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
-  .log h3{font-size:16px;margin-bottom:4px}
-  .log p{font-size:14px;color:var(--muted);margin:0}
-  .log .tag{font-family:var(--mono);font-size:11px;color:var(--ok);font-weight:600}
+  .qa{border-top:1px solid var(--border); padding:18px 0}
+  .qa:first-child{border-top:none}
+  .qa h3{font-size:15px; margin-bottom:6px; letter-spacing:-.012em; display:flex; gap:9px; align-items:baseline}
+  .qa h3 .sig{font-family:var(--mono); font-size:12px; font-weight:590; color:var(--warn)}
+  .qa p{font-size:14px; margin:0; color:var(--muted)}
 
-  .snap{display:grid;grid-template-columns:auto 1fr;gap:2px 16px;font-size:14px;align-items:baseline}
-  .snap .n{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+  .note{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 20px; box-shadow:var(--shadow)}
+  .note p{margin:0; font-size:14px; color:var(--muted)} .note strong{color:var(--text); font-weight:590}
 
-  .note{border-left:3px solid var(--accent);background:var(--panel);padding:14px 18px;border-radius:0 12px 12px 0;box-shadow:var(--shadow)}
-  .note p{margin:0;font-size:14.5px;color:var(--muted)}
-  .note strong{color:var(--ink)}
-
-  .foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);font-size:13px;color:var(--faint);font-family:var(--mono)}
-  ul.tight{margin:.2em 0 1em;padding-left:1.1em}
-  ul.tight li{margin:.3em 0;color:var(--muted);font-size:14.5px}
-  ul.tight li b{color:var(--ink);font-weight:600}
+  .foot{margin-top:76px; padding-top:24px; border-top:1px solid var(--border); font-size:12.5px; color:var(--faint); font-family:var(--mono)}
 </style>
 
 <div class="wrap">
 
   <header class="hero">
-    <p class="eyebrow">Claude Code gateway</p>
+    <p class="eyebrow">Claude Code gateway · setup &amp; guide</p>
     <h1>One endpoint.<br><span class="k">Many engines.</span></h1>
-    <p class="lede">Omnirouter sits on <code>127.0.0.1:8787</code> and speaks the Anthropic Messages API. Claude Code points at it with one setting; behind it, eight providers answer — free and paid — with streaming, tool-use, and reasoning all handled the same way.</p>
+    <p class="lede">Omnirouter lets Claude Code's <code>/model</code> picker spawn models from eight providers — free and paid — through one local, Anthropic-compatible endpoint. This page gets you running and explains every feature.</p>
     <div class="badges">
-      <span class="pill p-acc">8 providers</span>
-      <span class="pill p-free">FREE 🆓 auto-tagged</span>
-      <span class="pill p-acc">tool-use</span>
-      <span class="pill p-acc">SSE streaming</span>
-      <span class="pill p-acc">77 tests green</span>
+      <span class="pill acc">8 providers</span>
+      <span class="pill free dot">free tier auto-tagged</span>
+      <span class="pill">tool-use</span>
+      <span class="pill">SSE streaming</span>
     </div>
+    <nav>
+      <a href="#start">Quickstart</a>
+      <a href="#how">How it works</a>
+      <a href="#models">Models</a>
+      <a href="#features">Features</a>
+      <a href="#use">Daily use</a>
+      <a href="#config">Config</a>
+      <a href="#trouble">Troubleshooting</a>
+    </nav>
   </header>
 
-  <section>
-    <p class="eyebrow">The idea</p>
+  <section id="start">
+    <p class="eyebrow">Quickstart</p>
+    <h2>Running in three steps</h2>
+    <div class="steps">
+      <div class="step"><div>
+        <h3>Configure your keys</h3>
+        <p>Copy the example env file and fill in only the providers you'll use. Everything boots with zero keys set — unconfigured providers simply report unhealthy.</p>
+        <pre><span class="c"># from the repo root</span>
+cp .env.example .env
+<span class="c"># edit .env: OPENROUTER_API_KEY, GROQ_API_KEY, … (only what you need)</span></pre>
+      </div></div>
+      <div class="step"><div>
+        <h3>Start the gateway</h3>
+        <p>One process on <code>127.0.0.1:8787</code>. No separate services — OpenCode Zen is reached directly over HTTPS.</p>
+        <pre>uvicorn gateway.main:app --env-file .env --port 8787
+<span class="c"># or, idempotently:</span>  ./scripts/ensure-gateway.sh</pre>
+      </div></div>
+      <div class="step"><div>
+        <h3>Point Claude Code at it</h3>
+        <p>Set one environment variable, then open the picker and choose any gateway engine.</p>
+        <pre>export ANTHROPIC_BASE_URL="http://127.0.0.1:8787"
+<span class="c"># in Claude Code:</span>  /model</pre>
+      </div></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <p class="eyebrow">How it works</p>
     <h2>Replace one hop, keep one interface</h2>
-    <p>Claude Code normally sends every request to Anthropic. Omnirouter replaces that single hop with a local translator: it accepts an Anthropic request, rewrites it into whatever a chosen provider speaks (OpenAI, Gemini, or Anthropic itself), streams the answer back, and translates the reply — tool calls and all — back into the shape Claude Code expects.</p>
-    <p>You choose the engine by <b>model id</b>. A model called <code>claude-groq-llama3</code> routes to Groq; <code>claude-mistral-large</code> to Mistral; <code>claude-opencode-big-pickle</code> to OpenCode Zen. The <code>claude-</code> prefix is required — Claude Code silently hides any model id that doesn't contain it.</p>
+    <p>Claude Code normally sends every request to Anthropic. Omnirouter replaces that single hop with a local translator: it accepts an Anthropic request, rewrites it into whatever the chosen provider speaks — OpenAI, Gemini, or Anthropic itself — streams the answer back, and translates the reply (tool calls and all) into the shape Claude Code expects.</p>
+    <div class="pipe">
+      <div class="node"><div class="t">Claude Code</div><div class="s">/model picker</div></div>
+      <div class="wire"><span class="pkt"></span></div>
+      <div class="node gw"><div class="t">Omnirouter</div><div class="s">match · translate · stream</div></div>
+      <div class="wire w2"><span class="pkt"></span></div>
+      <div class="node"><div class="t">Provider API</div><div class="s">Groq · Gemini · …</div></div>
+    </div>
+    <div class="lbl"><span>Anthropic in</span><span>OpenAI / Gemini out</span></div>
+    <p style="font-size:14px; margin-top:18px">Every hop is bidirectional — the reply streams back the same way. On the return, <code>tool_calls</code> become Anthropic <code>tool_use</code> blocks and inline <code>&lt;think&gt;</code> reasoning is stripped.</p>
   </section>
 
-  <section>
-    <p class="eyebrow">Request flow</p>
-    <h2>What happens to one message</h2>
-    <svg class="flow" viewBox="0 0 720 200" role="img" aria-label="Request flow from Claude Code through the gateway to a provider and back">
-      <defs>
-        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 z" fill="var(--accent)"/>
-        </marker>
-      </defs>
-      <!-- boxes -->
-      <g font-size="13" fill="var(--ink)">
-        <rect x="8" y="74" width="150" height="52" rx="10" fill="var(--panel)" stroke="var(--line-strong)"/>
-        <text x="83" y="97" text-anchor="middle">Claude Code</text>
-        <text x="83" y="114" text-anchor="middle" font-size="11" fill="var(--muted)">/model picker</text>
-
-        <rect x="238" y="60" width="244" height="80" rx="12" fill="var(--accent-soft)" stroke="var(--accent)"/>
-        <text x="360" y="86" text-anchor="middle" fill="var(--accent-ink)" font-weight="600">Omnirouter :8787</text>
-        <text x="360" y="105" text-anchor="middle" font-size="11" fill="var(--accent-ink)">match prefix · translate</text>
-        <text x="360" y="121" text-anchor="middle" font-size="11" fill="var(--accent-ink)">stream · keepalive · fallback</text>
-
-        <rect x="562" y="74" width="150" height="52" rx="10" fill="var(--panel)" stroke="var(--line-strong)"/>
-        <text x="637" y="97" text-anchor="middle">Provider API</text>
-        <text x="637" y="114" text-anchor="middle" font-size="11" fill="var(--muted)">Groq · Gemini · …</text>
-      </g>
-      <!-- arrows -->
-      <g stroke="var(--accent)" stroke-width="2" fill="none">
-        <line x1="160" y1="90" x2="232" y2="90" marker-end="url(#ar)"/>
-        <line x1="484" y1="90" x2="556" y2="90" marker-end="url(#ar)"/>
-        <line x1="556" y1="110" x2="486" y2="110" marker-end="url(#ar)" opacity=".55"/>
-        <line x1="232" y1="110" x2="162" y2="110" marker-end="url(#ar)" opacity=".55"/>
-      </g>
-      <g font-family="var(--mono)" font-size="10.5" fill="var(--muted)">
-        <text x="196" y="82" text-anchor="middle">Anthropic</text>
-        <text x="520" y="82" text-anchor="middle">OpenAI /</text>
-        <text x="520" y="94" text-anchor="middle">Gemini</text>
-        <text x="196" y="128" text-anchor="middle">SSE back</text>
-      </g>
-    </svg>
-    <p style="font-size:14px;color:var(--muted)">On the way back, <code>tool_calls</code> become Anthropic <code>tool_use</code> blocks, and inline <code>&lt;think&gt;</code> reasoning is stripped so it never leaks into the visible answer.</p>
-  </section>
-
-  <section>
-    <p class="eyebrow">The lineup</p>
-    <h2>Eight providers, one prefix scheme</h2>
+  <section id="models">
+    <p class="eyebrow">Models</p>
+    <h2>Picking an engine by its id</h2>
+    <p>Every model is named <code>claude-&lt;provider&gt;-&lt;key&gt;</code>. The <code>claude-</code> prefix is required — Claude Code hides any id without it. The provider segment decides where the request goes.</p>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Provider</th><th>Model ids</th><th>Speaks</th><th>Cost</th></tr></thead>
+        <thead><tr><th>Provider</th><th>Example id</th><th>Speaks</th><th>Cost</th></tr></thead>
         <tbody>
-          <tr><td>Anthropic</td><td><span class="mono">claude-*</span></td><td>Anthropic (native)</td><td><span class="pill p-paid">paid</span></td></tr>
-          <tr><td>OpenRouter</td><td><span class="mono">claude-openrouter-*</span></td><td>Anthropic skin</td><td><span class="pill p-free">free</span> + <span class="pill p-paid">paid</span></td></tr>
-          <tr><td>Groq</td><td><span class="mono">claude-groq-*</span></td><td>OpenAI</td><td><span class="pill p-free">free</span></td></tr>
-          <tr><td>Google Gemini</td><td><span class="mono">claude-gemini-*</span></td><td>Gemini API</td><td><span class="pill p-free">free</span></td></tr>
-          <tr><td>Mistral</td><td><span class="mono">claude-mistral-*</span></td><td>OpenAI</td><td><span class="pill p-free">free</span></td></tr>
-          <tr><td>Cerebras</td><td><span class="mono">claude-cerebras-*</span></td><td>OpenAI</td><td><span class="pill p-free">free</span></td></tr>
-          <tr><td>NVIDIA NIM</td><td><span class="mono">claude-nim-*</span></td><td>OpenAI</td><td>self-host</td></tr>
-          <tr><td>OpenCode Zen</td><td><span class="mono">claude-opencode-*</span></td><td>OpenAI-compatible</td><td><span class="pill p-free">free</span></td></tr>
+          <tr><td>Anthropic</td><td><span class="mono">claude-opus-5</span></td><td>Anthropic (native)</td><td><span class="pill paid">paid</span></td></tr>
+          <tr><td>OpenRouter</td><td><span class="mono">claude-openrouter-deepseek</span></td><td>Anthropic skin</td><td><span class="pill free">free</span><span class="pill paid">paid</span></td></tr>
+          <tr><td>Groq</td><td><span class="mono">claude-groq-llama3</span></td><td>OpenAI</td><td><span class="pill free">free</span></td></tr>
+          <tr><td>Google Gemini</td><td><span class="mono">claude-gemini-flash</span></td><td>Gemini API</td><td><span class="pill free">free</span></td></tr>
+          <tr><td>Mistral</td><td><span class="mono">claude-mistral-large</span></td><td>OpenAI</td><td><span class="pill free">free</span></td></tr>
+          <tr><td>Cerebras</td><td><span class="mono">claude-cerebras-gpt-oss</span></td><td>OpenAI</td><td><span class="pill free">free</span></td></tr>
+          <tr><td>NVIDIA NIM</td><td><span class="mono">claude-nim-llama3</span></td><td>OpenAI</td><td>self-host</td></tr>
+          <tr><td>OpenCode Zen</td><td><span class="mono">claude-opencode-big-pickle</span></td><td>OpenAI-compatible</td><td><span class="pill free">free</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p style="margin-top:16px;font-size:14px;color:var(--muted)">Free-tier providers and any OpenRouter <code>:free</code> slug are auto-tagged <span class="pill p-free" style="font-size:11px">FREE&nbsp;🆓</span> in the picker. <code>GET /v1/models?free=1</code> returns only the free ones. The full menu lives in <code>MODELS.md</code>.</p>
+    <p style="margin-top:16px; font-size:14px">Free-tier providers and any OpenRouter <code>:free</code> slug are auto-tagged in the picker. Ask the gateway for the live list, or free-only:</p>
+    <pre>curl 127.0.0.1:8787/v1/models          <span class="c"># everything</span>
+curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span></pre>
+    <p style="margin-top:14px; font-size:14px">The complete menu (every key per provider) lives in <code>MODELS.md</code>.</p>
   </section>
 
-  <section>
-    <p class="eyebrow">What got built</p>
-    <h2>The engineering story</h2>
-    <ul class="log">
-      <li>
-        <span class="tag">FIXED</span>
-        <h3>OpenCode Zen, called directly</h3>
-        <p>The original opencode “bridge” drove opencode's agent loop and could only return plain text. It now calls OpenCode Zen's OpenAI-compatible endpoint directly — so those models <b>support tool-use</b> and stream like any other, with no local process to run.</p>
-      </li>
-      <li>
-        <span class="tag">FIXED</span>
-        <h3>OpenRouter non-streaming returned empty</h3>
-        <p>OpenRouter relays its Anthropic events as raw bytes. In <code>stream:false</code> mode the reconstructor ignored them, so every OpenRouter model came back blank. It now folds those raw lines back into a complete message.</p>
-      </li>
-      <li>
-        <span class="tag">FIXED</span>
-        <h3>Paid models masqueraded as free</h3>
-        <p>Auto-discovery pulled OpenCode Zen's whole catalog — including paid GPT-5 / Opus / Grok tiers — and tagged them all free. Discovery now surfaces only genuinely free models.</p>
-      </li>
-      <li>
-        <span class="tag">FIXED</span>
-        <h3>Reasoning leaked into answers</h3>
-        <p>Some models inline <code>&lt;think&gt;…&lt;/think&gt;</code> in their output. The translator now strips it — even when a tag is split across streaming chunks — without touching ordinary text like <code>a &lt; b</code>.</p>
-      </li>
-      <li>
-        <span class="tag">ADDED</span>
-        <h3>A heartbeat for slow models</h3>
-        <p>Big reasoning models can think silently for tens of seconds. The gateway now sends a <code>ping</code> during that silence so the client knows it's alive — and never kills the request. (More below.)</p>
-      </li>
-    </ul>
-  </section>
-
-  <section class="grid cols-2">
-    <div>
-      <p class="eyebrow">Keepalive</p>
-      <h2 style="font-size:22px;margin-bottom:10px">Silence isn't death</h2>
-      <p style="font-size:14.5px;color:var(--muted)">A model that hasn't sent a token in 15 seconds isn't broken — it's thinking. The streaming endpoint emits a harmless <code>ping</code> every <code>KEEPALIVE_INTERVAL</code> seconds of silence so the caller keeps waiting instead of hanging up. The real request is never cancelled. Set the interval to <code>0</code> to switch it off.</p>
-    </div>
-    <div>
-      <p class="eyebrow">Tokens</p>
-      <h2 style="font-size:22px;margin-bottom:10px">Give reasoning room</h2>
-      <p style="font-size:14.5px;color:var(--muted)"><code>max_tokens</code> caps the <i>total</i> output — hidden thinking plus the visible reply. Set it too low and a reasoning model spends the whole budget thinking and returns nothing. The gateway imposes <b>no limit of its own</b>; it forwards exactly what you send. Give reasoning spawns headroom.</p>
+  <section id="features">
+    <p class="eyebrow">Features</p>
+    <h2>What the gateway handles for you</h2>
+    <div class="grid cols-3">
+      <div class="card"><span class="k">translate</span><h3>Protocol bridging</h3><p>Anthropic ⇄ OpenAI and ⇄ Gemini, both directions, including system prompts and stop sequences.</p></div>
+      <div class="card"><span class="k">tool_use</span><h3>Tools everywhere</h3><p>Your tool schemas are forwarded and the model's tool calls come back as Anthropic <code>tool_use</code> — on every OpenAI-compatible provider.</p></div>
+      <div class="card"><span class="k">ping</span><h3>Streaming keepalive</h3><p>A heartbeat during long silences keeps slow models alive without ever cancelling the request.</p></div>
+      <div class="card"><span class="k">&lt;think&gt;</span><h3>Reasoning stripped</h3><p>Inline chain-of-thought is filtered from the visible answer, even when a tag spans two chunks.</p></div>
+      <div class="card"><span class="k">free=1</span><h3>Free-tier tagging</h3><p>Zero-cost engines are labelled in discovery so the picker makes the cheap choice obvious.</p></div>
+      <div class="card"><span class="k">/health</span><h3>Health &amp; discovery</h3><p>Per-backend health and a cached model list, so the picker only shows what can actually answer.</p></div>
     </div>
   </section>
 
-  <section>
-    <p class="eyebrow">Snapshot</p>
-    <h2>Where it stands</h2>
-    <div class="card" style="margin-top:14px">
-      <div class="snap">
-        <span class="n" style="color:var(--ok)">47/60</span><span>models answering right now (rest are free-tier rate limits or unset keys — not gateway faults)</span>
-        <span class="n">77</span><span>unit &amp; integration tests passing</span>
-        <span class="n">8</span><span>providers wired behind one endpoint</span>
-        <span class="n">0</span><span>gateway bugs open — the four above are fixed and merged</span>
+  <section id="use">
+    <p class="eyebrow">Daily use</p>
+    <h2>Working with it</h2>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Subagents: free by default</h3>
+        <p style="margin-top:7px">The orchestrator spawns <code>worker</code> / <code>reader</code> subagents on a <b>free</b> engine unless you authorize a paid one. Choose per spawn by passing <code>model: claude-groq-llama3</code>, or pin all of them with <code>CLAUDE_CODE_SUBAGENT_MODEL</code>. Full policy in <code>CLAUDE.md</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Give reasoning models room</h3>
+        <p style="margin-top:7px"><code>max_tokens</code> caps the <i>total</i> output — hidden thinking plus the visible reply. Set it too low and a reasoning model spends the whole budget thinking and returns nothing. The gateway adds no limit of its own; it forwards exactly what you send.</p>
       </div>
     </div>
-    <p style="margin-top:14px;font-size:14px;color:var(--muted)">Free tiers share upstream pools, so a given model may return <span class="pill p-paid" style="font-size:11px">429</span> one minute and answer the next. These are surfaced as clean errors, never silent blanks. A personal key lifts most limits.</p>
   </section>
 
-  <section>
+  <section id="config">
+    <p class="eyebrow">Reference</p>
+    <h2>Configuration</h2>
+    <p>Set what you need in <code>.env</code>; model maps and fallback chains live in <code>gateway_config.yaml</code>.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td class="var"><span class="mono">OPENROUTER_API_KEY</span></td><td>—</td><td>OpenRouter (free + paid slugs)</td></tr>
+          <tr><td class="var"><span class="mono">GROQ_API_KEY</span></td><td>—</td><td>Groq</td></tr>
+          <tr><td class="var"><span class="mono">GEMINI_API_KEY</span></td><td>—</td><td>Google Gemini</td></tr>
+          <tr><td class="var"><span class="mono">MISTRAL_API_KEY</span></td><td>—</td><td>Mistral</td></tr>
+          <tr><td class="var"><span class="mono">CEREBRAS_API_KEY</span></td><td>—</td><td>Cerebras</td></tr>
+          <tr><td class="var"><span class="mono">OPENCODE_API_KEY</span></td><td><span class="mono">public</span></td><td>OpenCode Zen; personal key lifts free limits</td></tr>
+          <tr><td class="var"><span class="mono">NIM_BASE_URL</span> / <span class="mono">NIM_API_KEY</span></td><td>—</td><td>NVIDIA NIM (self-hosted or cloud)</td></tr>
+          <tr><td class="var"><span class="mono">KEEPALIVE_INTERVAL</span></td><td><span class="mono">15</span></td><td>Heartbeat seconds; <code>0</code> disables</td></tr>
+          <tr><td class="var"><span class="mono">GATEWAY_PORT</span></td><td><span class="mono">8787</span></td><td>Listen port</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:20px; font-size:14px">Endpoints: <code>GET /v1/models</code> (discovery, <code>?free=1</code>), <code>POST /v1/messages</code> (the Messages API), <code>GET /health</code> (per-backend status).</p>
+  </section>
+
+  <section id="trouble">
+    <p class="eyebrow">Troubleshooting</p>
+    <h2>When something looks off</h2>
+    <div>
+      <div class="qa"><h3>Empty reply from a reasoning model <span class="sig">stop: max_tokens</span></h3><p>It spent the whole token budget thinking. Raise <code>max_tokens</code> — reasoning models (Groq <code>gpt-oss</code>/<code>qwen3</code>, Gemini 2.5/3.x, OpenCode Zen) need headroom for hidden thinking plus the answer.</p></div>
+      <div class="qa"><h3>A model returns a rate-limit <span class="sig">429</span></h3><p>Free tiers share upstream pools, so a given model may be limited one minute and fine the next. It's surfaced as a clean error, never a silent blank. Retry, switch to another free engine, or set a personal key for that provider.</p></div>
+      <div class="qa"><h3>Provider unhealthy or auth error <span class="sig">no key</span></h3><p>That provider's key isn't set. Cerebras and NIM stay inert until <code>CEREBRAS_API_KEY</code> / <code>NIM_BASE_URL</code>+<code>NIM_API_KEY</code> are present. Add the key and restart the gateway.</p></div>
+    </div>
+  </section>
+
+  <section id="security">
     <p class="eyebrow">Security</p>
     <h2>Keys never leave the machine</h2>
     <div class="note">
@@ -256,17 +278,6 @@
     </div>
   </section>
 
-  <section>
-    <p class="eyebrow">Run it</p>
-    <h2>Three steps</h2>
-    <ul class="tight">
-      <li><b>Configure</b> — copy <code>.env.example</code> to <code>.env</code>, fill in only the providers you use. Everything boots without keys; unconfigured providers just report unhealthy.</li>
-      <li><b>Start</b> — <code>uvicorn gateway.main:app --env-file .env --port 8787</code> (or <code>./scripts/ensure-gateway.sh</code>).</li>
-      <li><b>Point Claude Code at it</b> — set <code>ANTHROPIC_BASE_URL=http://127.0.0.1:8787</code>, open <code>/model</code>, pick a gateway engine.</li>
-    </ul>
-    <p style="font-size:14px;color:var(--muted)">Deeper docs: <code>README.md</code> (usage), <code>MODELS.md</code> (full menu), <code>OWNERSHIP.md</code> (invariants &amp; decision log), <code>CLAUDE.md</code> (subagent engine policy).</p>
-  </section>
-
-  <p class="foot">Omnirouter · local Claude Code gateway · Anthropic-compatible on 127.0.0.1:8787</p>
+  <p class="foot">Omnirouter · local Claude Code gateway · deeper docs: README.md · MODELS.md · OWNERSHIP.md · CLAUDE.md</p>
 
 </div>
