@@ -121,11 +121,11 @@ class GatewayYamlConfig(BaseModel):
     nim_model_map: NimModelMap = Field(default_factory=NimModelMap)
     mistral_model_map: MistralModelMap = Field(default_factory=MistralModelMap)
     cerebras_model_map: CerebrasModelMap = Field(default_factory=CerebrasModelMap)
-    # opencode is a standalone provider backed by a local `opencode serve`
-    # instance (session API), exposing opencode's own hosted models.
+    # opencode is a standalone provider: opencode's own hosted "OpenCode Zen"
+    # models, served OpenAI-compatibly at opencode_base_url. Called directly
+    # (not via `opencode serve`) so tool-use works.
     opencode_model_map: OpencodeModelMap = Field(default_factory=OpencodeModelMap)
-    opencode_serve_url: str = Field(default="http://127.0.0.1:5051")
-    opencode_agent: str = Field(default="general")
+    opencode_base_url: str = Field(default="https://opencode.ai/zen/v1")
     fallback_chains: FallbackChains = Field(default_factory=FallbackChains)
     # Providers whose entire catalog is free-tier. Every model from these is
     # badged FREE in discovery. (OpenRouter is mixed, so its free models are
@@ -167,6 +167,10 @@ class GatewayConfig(BaseSettings):
     mistral_api_key: str | None = Field(default=None, alias="MISTRAL_API_KEY")
 
     cerebras_api_key: str | None = Field(default=None, alias="CEREBRAS_API_KEY")
+
+    # OpenCode Zen: free models use the shared public key; set OPENCODE_API_KEY
+    # to a personal key for higher limits.
+    opencode_api_key: str = Field(default="public", alias="OPENCODE_API_KEY")
 
     # Discovery
     discovery_cache_ttl: int = Field(default=300, alias="DISCOVERY_CACHE_TTL")  # seconds
@@ -237,12 +241,8 @@ class GatewayConfig(BaseSettings):
         return self.yaml.opencode_model_map.model_dump(by_alias=True)
 
     @property
-    def opencode_serve_url(self) -> str:
-        return self.yaml.opencode_serve_url
-
-    @property
-    def opencode_agent(self) -> str:
-        return self.yaml.opencode_agent
+    def opencode_base_url(self) -> str:
+        return self.yaml.opencode_base_url
 
     @property
     def fallback_chains(self) -> dict[str, list[str]]:

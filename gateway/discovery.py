@@ -91,43 +91,47 @@ def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, A
 
 async def fetch_live_bridge_models(config: GatewayConfig) -> list[dict[str, Any]]:
     """
-    Fetch live models from the local ``opencode serve`` instance so the menu
-    reflects whatever opencode actually offers (its ``/config/providers``).
+    Fetch live models from the OpenCode Zen endpoint (OpenAI-style ``/models``)
+    so the menu reflects whatever Zen currently offers.
 
-    Each opencode modelID is exposed as ``claude-opencode-<modelID>``. Returns
-    entries to merge with the static config; silently empty if opencode serve
-    is not reachable (static map is used instead).
+    Each Zen modelID is exposed as ``claude-opencode-<modelID>``. Returns entries
+    to merge with the static config; silently empty if Zen is unreachable (the
+    static map is used instead).
     """
     live_entries: list[dict[str, Any]] = []
+    base = config.opencode_base_url.rstrip("/")
+    api_key = config.opencode_api_key or "public"
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{config.opencode_serve_url}/config/providers")
+            response = await client.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
             if response.status_code != 200:
                 return []
             data = response.json()
     except Exception:
         return []
 
-    providers = data.get("providers") if isinstance(data, dict) else data
-    if not isinstance(providers, list):
+    models = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(models, list):
         return []
 
-    # Skip models the static map already covers (by opencode modelID) so we
-    # don't list the same model twice under its friendly key and its raw id.
+    # Skip models the static map already covers (by Zen modelID) so we don't
+    # list the same model twice under its friendly key and its raw id.
     known = set(config.opencode_model_map.values())
 
-    for prov in providers:
-        prov_id = prov.get("id", "opencode")
-        for model_id in (prov.get("models") or {}):
-            if model_id in known:
-                continue
-            gw_id = f"claude-opencode-{model_id}"
-            if "claude" in gw_id.lower() or "anthropic" in gw_id.lower():
-                live_entries.append({
-                    "id": gw_id,
-                    "display_name": f"{model_id} (opencode:{prov_id} · FREE 🆓)",
-                })
+    for model in models:
+        model_id = model.get("id") if isinstance(model, dict) else None
+        if not model_id or model_id in known:
+            continue
+        gw_id = f"claude-opencode-{model_id}"
+        if "claude" in gw_id.lower() or "anthropic" in gw_id.lower():
+            live_entries.append({
+                "id": gw_id,
+                "display_name": f"{model_id} (opencode · FREE 🆓)",
+            })
 
     return live_entries
 

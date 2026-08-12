@@ -23,8 +23,8 @@ def mock_config():
     config.nim_base_url = "http://localhost:8000"
     config.nim_api_key = "test-nim-key"
     config.mistral_api_key = "test-mistral-key"
-    config.opencode_serve_url = "http://127.0.0.1:5051"
-    config.opencode_agent = "general"
+    config.opencode_base_url = "https://opencode.ai/zen/v1"
+    config.opencode_api_key = "public"
     config.openrouter_model_map = {"opus-5": "anthropic/claude-opus-5"}
     config.groq_model_map = {"llama3": "llama-3.3-70b-versatile"}
     config.gemini_model_map = {"flash": "gemini-1.5-flash"}

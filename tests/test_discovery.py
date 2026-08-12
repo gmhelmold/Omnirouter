@@ -166,7 +166,8 @@ class TestFetchLiveBridgeModels:
     @pytest.mark.asyncio
     async def test_successful_fetch(self):
         config = MagicMock()
-        config.opencode_serve_url = "http://127.0.0.1:5051"
+        config.opencode_base_url = "https://opencode.ai/zen/v1"
+        config.opencode_api_key = "public"
         # Static map already covers big-pickle -> it must be skipped; only the
         # genuinely-new model (mimo) should be surfaced live.
         config.opencode_model_map = {"big-pickle": "big-pickle"}
@@ -174,8 +175,9 @@ class TestFetchLiveBridgeModels:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "providers": [
-                {"id": "opencode", "models": {"big-pickle": {}, "mimo-v2.5-free": {}}}
+            "data": [
+                {"id": "big-pickle"},
+                {"id": "mimo-v2.5-free"},
             ]
         }
 
@@ -193,7 +195,8 @@ class TestFetchLiveBridgeModels:
     @pytest.mark.asyncio
     async def test_failed_fetch(self):
         config = MagicMock()
-        config.opencode_serve_url = "http://127.0.0.1:5051"
+        config.opencode_base_url = "https://opencode.ai/zen/v1"
+        config.opencode_api_key = "public"
         config.opencode_model_map = {}
 
         with patch("httpx.AsyncClient") as mock_client_class:
