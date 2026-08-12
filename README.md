@@ -116,15 +116,22 @@ You are a coding assistant using Groq's Llama 3.
 
 ## Fallback Chains
 
-Configured in `gateway_config.yaml`:
+Configured in `gateway_config.yaml`. Entries are registered backend
+provider names (`openrouter`, `groq`, `gemini`, `nim`, `mistral`, `opencode`).
+The primary — the backend that owns the model prefix — is implicit; the list
+holds only the fallbacks tried after it, in order:
 ```yaml
 fallback_chains:
-  groq: ["groq", "openrouter-groq", "opencode-groq"]
-  gemini: ["gemini", "opencode-gemini", "openrouter-gemini"]
-  mistral: ["mistral", "opencode-mistral", "openrouter-mistral"]
+  groq: ["opencode"]     # groq direct, then groq via the opencode-bridge
+  gemini: ["opencode"]
+  mistral: ["opencode"]
 ```
 
-When primary fails (timeout, 5xx, rate limit), gateway automatically tries next in chain.
+When the primary fails **before streaming any content** (timeout, 5xx, rate
+limit, connection error), the gateway tries the next backend in the chain, with
+the model key preserved (`claude-groq-llama3` → `claude-opencode-groq-llama3`).
+Once bytes have been sent to the client, a later upstream failure is surfaced
+as-is instead of being retried on top of a half-sent stream.
 
 ## Configuration
 
@@ -164,10 +171,11 @@ mypy gateway
 ### Code Structure
 ```
 gateway/
-├── main.py                 # FastAPI app
+├── main.py                 # FastAPI app (streaming + non-streaming /v1/messages)
 ├── config.py               # Pydantic Settings + YAML
 ├── router.py               # Routing + fallback
 ├── discovery.py            # Model discovery + caching
+├── messages.py             # Non-streaming message reconstruction
 ├── health.py               # Health checks
 ├── backends/
 │   ├── base.py             # Backend protocol

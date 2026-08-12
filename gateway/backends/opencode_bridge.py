@@ -6,19 +6,16 @@ Routes to opencode-bridge instances (one per provider) using shared OpenAI trans
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
-import httpx
-
-from gateway.backends.base import BackendBase, SSEEvent, BackendHealth
+from gateway.backends.base import BackendBase, BackendHealth, SSEEvent
+from gateway.config import get_config
 from gateway.translators.openai import (
     anthropic_to_openai,
-    openai_sse_to_anthropic,
-    normalize_openai_error,
     build_openai_request,
-    OpenAIStreamBuffer,
+    stream_openai_compatible,
 )
-from gateway.config import get_config
 
 
 class OpencodeBridgeBackend(BackendBase):
@@ -32,12 +29,12 @@ class OpencodeBridgeBackend(BackendBase):
     def model_prefix(self) -> str:
         return "claude-opencode-"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("opencode-bridge")
         self._endpoints: dict[str, str] = {}
         self._model_map: dict[str, dict[str, str]] = {}
 
-    def _get_config(self):
+    def _get_config(self) -> None:
         config = get_config()
         self._endpoints = config.opencode_bridge_endpoints
         self._model_map = config.opencode_bridge_model_map
@@ -52,7 +49,7 @@ class OpencodeBridgeBackend(BackendBase):
             return None
         remainder = model[prefix_len:]
         # Find provider (groq, gemini, mistral)
-        for provider in self._endpoints.keys():
+        for provider in self._endpoints:
             provider_prefix = f"{provider}-"
             if remainder.startswith(provider_prefix):
                 model_key = remainder[len(provider_prefix):]
@@ -62,10 +59,9 @@ class OpencodeBridgeBackend(BackendBase):
     async def handle_request(
         self,
         model: str,
-        messages: list[dict],
-        tools: list[dict] | None,
-        headers: dict,
-        cwd: Optional[str] = None,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        cwd: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
         """Route to correct opencode-bridge instance."""
         self._get_config()
@@ -74,7 +70,10 @@ class OpencodeBridgeBackend(BackendBase):
         if not parsed:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "invalid_model", "message": f"Invalid opencode model format: {model}"}}
+                data={
+                    "type": "error",
+                    "error": {"type": "invalid_model", "message": f"Invalid opencode model format: {model}"},
+                },
             )
             return
 
@@ -83,70 +82,48 @@ class OpencodeBridgeBackend(BackendBase):
         if not endpoint:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "config_error", "message": f"No bridge endpoint for provider: {provider}"}}
+                data={
+                    "type": "error",
+                    "error": {"type": "config_error", "message": f"No bridge endpoint for provider: {provider}"},
+                },
             )
             return
 
-        # Map model key
         provider_model_map = self._model_map.get(provider, {})
         mapped_model = provider_model_map.get(model_key, model_key)
 
-        # Translate Anthropic → OpenAI
-        openai_messages, openai_functions = anthropic_to_openai(messages, tools)
-
-        # Build request
+        openai_messages, openai_functions = anthropic_to_openai(
+            body.get("messages", []), body.get("tools"), body.get("system")
+        )
         request_body = build_openai_request(
             model=mapped_model,
             messages=openai_messages,
             tools=openai_functions,
             stream=True,
+            temperature=body.get("temperature"),
+            top_p=body.get("top_p"),
+            max_tokens=body.get("max_tokens"),
+            stop=body.get("stop_sequences"),
         )
 
-        client = self.get_client()
-        buffer = OpenAIStreamBuffer()
-
-        try:
-            async with client.stream(
-                "POST",
-                f"{endpoint}/v1/chat/completions",
-                json=request_body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream",
-                },
-                timeout=httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0),
-            ) as response:
-                if response.status_code >= 400:
-                    yield SSEEvent(event="error", data=normalize_openai_error(response))
-                    return
-
-                buffer = OpenAIStreamBuffer()
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    event, buffer = openai_sse_to_anthropic(line, buffer)
-                    if event:
-                        yield event
-
-        except httpx.TimeoutException:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "timeout", "message": f"Opencode bridge ({provider}) request timed out"}})
-        except httpx.HTTPError as e:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "connection_error", "message": str(e)}})
+        async for event in stream_openai_compatible(
+            self.get_client(),
+            f"{endpoint}/v1/chat/completions",
+            request_body,
+            {"Content-Type": "application/json", "Accept": "text/event-stream"},
+            provider=f"opencode-bridge ({provider})",
+        ):
+            yield event
 
     async def health_check(self) -> BackendHealth:
-        import time
-
         self._get_config()
         results = []
         overall_healthy = True
 
         for provider, endpoint in self._endpoints.items():
-            start = time.time()
             client = self.get_client()
             try:
                 response = await client.get(f"{endpoint}/health", timeout=3.0)
-                latency = (time.time() - start) * 1000
                 if response.status_code == 200:
                     results.append(f"{provider}:healthy")
                 else:

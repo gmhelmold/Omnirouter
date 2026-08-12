@@ -1,33 +1,40 @@
 """
-Tests for OpenAI translator module.
+Tests for the OpenAI <-> Anthropic translator.
 """
 
 from __future__ import annotations
 
-import pytest
-
 from gateway.translators.openai import (
+    OpenAITranslator,
     anthropic_to_openai,
-    openai_sse_to_anthropic,
-    OpenAIStreamBuffer,
-    SSEEvent,
     build_openai_request,
 )
+
+
+def _events(translator: OpenAITranslator, lines: list[str]) -> list:
+    out = []
+    for line in lines:
+        out.extend(translator.feed(line))
+    return out
 
 
 class TestAnthropicToOpenAI:
     def test_simple_messages(self):
         messages = [
-            {"role": "system", "content": "You are helpful"},
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},
         ]
-        openai_msgs, functions = anthropic_to_openai(messages, None)
+        openai_msgs, functions = anthropic_to_openai(messages, None, "You are helpful")
 
-        assert len(openai_msgs) == 3
-        assert openai_msgs[0]["role"] == "system"
+        assert functions is None
+        assert openai_msgs[0] == {"role": "system", "content": "You are helpful"}
         assert openai_msgs[1]["role"] == "user"
         assert openai_msgs[2]["role"] == "assistant"
+
+    def test_system_list_blocks(self):
+        system = [{"type": "text", "text": "line1"}, {"type": "text", "text": "line2"}]
+        openai_msgs, _ = anthropic_to_openai([], None, system)
+        assert openai_msgs[0]["content"] == "line1\nline2"
 
     def test_tool_result_conversion(self):
         messages = [
@@ -41,22 +48,19 @@ class TestAnthropicToOpenAI:
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": "call_1",
-                        "content": "file content",
-                    }
+                    {"type": "tool_result", "tool_use_id": "call_1", "content": "file content"}
                 ],
             },
         ]
         openai_msgs, _ = anthropic_to_openai(messages, None)
 
-        # Should have system, user, assistant with tool_calls, tool
-        assert len(openai_msgs) == 4
-        # Check tool result became function role
+        assert openai_msgs[0]["role"] == "user"
+        assert openai_msgs[1]["role"] == "assistant"
+        assert openai_msgs[1]["tool_calls"][0]["function"]["name"] == "read"
         tool_msg = openai_msgs[-1]
         assert tool_msg["role"] == "tool"
         assert tool_msg["tool_call_id"] == "call_1"
+        assert tool_msg["content"] == "file content"
 
     def test_tools_conversion(self):
         tools = [
@@ -71,91 +75,128 @@ class TestAnthropicToOpenAI:
             }
         ]
         _, functions = anthropic_to_openai([], tools)
-
         assert functions is not None
-        assert len(functions) == 1
         assert functions[0]["name"] == "read_file"
         assert functions[0]["parameters"]["type"] == "object"
 
 
-class TestOpenAISSEParsing:
-    def test_text_delta(self):
-        buffer = OpenAIStreamBuffer()
-        line = 'data: {"choices":[{"delta":{"content":"Hello"}}]}'
-        event, buffer = openai_sse_to_anthropic(line, buffer)
+class TestOpenAIStreaming:
+    def test_text_stream_sequence(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"msg_1","model":"llama","choices":[{"delta":{"role":"assistant"}}]}',
+            'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+            'data: {"choices":[{"delta":{"content":"lo"}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        ])
+        names = [e.event for e in events]
+        assert names == [
+            "message_start",
+            "content_block_start",
+            "content_block_delta",
+            "content_block_delta",
+            "content_block_stop",
+            "message_delta",
+            "message_stop",
+        ]
+        # text deltas use text_delta with correct index
+        deltas = [e for e in events if e.event == "content_block_delta"]
+        assert deltas[0].data["delta"] == {"type": "text_delta", "text": "Hel"}
+        assert deltas[0].data["index"] == 0
+        # stop reason mapped
+        md = next(e for e in events if e.event == "message_delta")
+        assert md.data["delta"]["stop_reason"] == "end_turn"
 
-        assert event is not None
-        assert event.event == "content_block_delta"
-        assert event.data["delta"]["type"] == "text"
-        assert event.data["delta"]["text"] == "Hello"
+    def test_all_data_payloads_have_type(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"m","choices":[{"delta":{"role":"assistant"}}]}',
+            'data: {"choices":[{"delta":{"content":"x"}}]}',
+            'data: {"choices":[{"finish_reason":"stop"}]}',
+        ])
+        for e in events:
+            assert e.data.get("type") == e.event
 
-    def test_tool_call_streaming(self):
-        buffer = OpenAIStreamBuffer()
+    def test_tool_call_stream(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"m","choices":[{"delta":{"role":"assistant"}}]}',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read","arguments":""}}]}}]}',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":\\"/tmp\\"}"}}]}}]}',
+            'data: {"choices":[{"finish_reason":"tool_calls"}]}',
+        ])
+        names = [e.event for e in events]
+        assert names == [
+            "message_start",
+            "content_block_start",
+            "content_block_delta",
+            "content_block_stop",
+            "message_delta",
+            "message_stop",
+        ]
+        start = next(e for e in events if e.event == "content_block_start")
+        assert start.data["content_block"]["type"] == "tool_use"
+        assert start.data["content_block"]["name"] == "read"
+        assert start.data["content_block"]["id"] == "call_1"
+        delta = next(e for e in events if e.event == "content_block_delta")
+        assert delta.data["delta"]["type"] == "input_json_delta"
+        assert delta.data["delta"]["partial_json"] == '{"path":"/tmp"}'
+        md = next(e for e in events if e.event == "message_delta")
+        assert md.data["delta"]["stop_reason"] == "tool_use"
 
-        # First chunk - tool call starts
-        line1 = 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read"}}]}}]}'
-        event, buffer = openai_sse_to_anthropic(line1, buffer)
-        assert event is None  # Buffered
+    def test_text_then_tool_two_blocks(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"m","choices":[{"delta":{"role":"assistant","content":"thinking"}}]}',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"go","arguments":"{}"}}]}}]}',
+            'data: {"choices":[{"finish_reason":"tool_calls"}]}',
+        ])
+        starts = [e for e in events if e.event == "content_block_start"]
+        stops = [e for e in events if e.event == "content_block_stop"]
+        assert len(starts) == 2
+        assert starts[0].data["content_block"]["type"] == "text"
+        assert starts[0].data["index"] == 0
+        assert starts[1].data["content_block"]["type"] == "tool_use"
+        assert starts[1].data["index"] == 1
+        assert len(stops) == 2
 
-        # Second chunk - function arguments
-        line2 = 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":"/tmp\\"}"}}]}}]}'
-        event, buffer = openai_sse_to_anthropic(line2, buffer)
-        assert event is None  # Still buffered
+    def test_done_marker_flushes(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"m","choices":[{"delta":{"role":"assistant","content":"hi"}}]}',
+            "data: [DONE]",
+        ])
+        names = [e.event for e in events]
+        assert names[-1] == "message_stop"
+        assert "message_delta" in names
+        assert names.count("message_stop") == 1
 
-        # Final chunk - finish
-        line3 = 'data: {"choices":[{"finish_reason":"tool_calls"}]}'
-        event, buffer = openai_sse_to_anthropic(line3, buffer)
-        assert event is not None
-        assert event.event == "content_block_delta"
-        assert event.data["delta"]["type"] == "tool_use"
-        assert event.data["delta"]["name"] == "read"
-
-    def test_done_marker(self):
-        buffer = OpenAIStreamBuffer()
-        line = "data: [DONE]"
-        event, buffer = openai_sse_to_anthropic(line, buffer)
-
-        assert event is not None
-        assert event.event == "message_stop"
-
-    def test_message_start(self):
-        buffer = OpenAIStreamBuffer()
-        line = 'data: {"id":"msg_123","choices":[{"delta":{"role":"assistant"}}]}'
-        event, buffer = openai_sse_to_anthropic(line, buffer)
-
-        assert event is not None
-        assert event.event == "message_start"
-        assert event.data["message"]["id"] == "msg_123"
+    def test_usage_captured(self):
+        t = OpenAITranslator()
+        events = _events(t, [
+            'data: {"id":"m","choices":[{"delta":{"role":"assistant","content":"hi"}}]}',
+            'data: {"choices":[{"finish_reason":"stop"}],"usage":{"completion_tokens":7}}',
+        ])
+        md = next(e for e in events if e.event == "message_delta")
+        assert md.data["usage"]["output_tokens"] == 7
 
 
 class TestBuildOpenAIRequest:
     def test_basic_request(self):
-        req = build_openai_request(
-            model="gpt-4",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=True,
-        )
+        req = build_openai_request(model="gpt-4", messages=[{"role": "user", "content": "Hi"}])
         assert req["model"] == "gpt-4"
         assert req["stream"] is True
-        assert req["messages"][0]["content"] == "Hi"
 
     def test_with_tools(self):
-        functions = [{"name": "test", "parameters": {}}]
-        req = build_openai_request(
-            model="gpt-4",
-            messages=[],
-            tools=functions,
-            stream=True,
-        )
-        assert req["tools"][0]["function"]["name"] == "test"
+        req = build_openai_request(model="gpt-4", messages=[], tools=[{"name": "t", "parameters": {}}])
+        assert req["tools"][0]["function"]["name"] == "t"
         assert req["tool_choice"] == "auto"
 
-    def test_with_temp_and_tokens(self):
+    def test_forwards_params(self):
         req = build_openai_request(
-            model="gpt-4",
-            messages=[],
-            temperature=0.5,
-            max_tokens=100,
+            model="gpt-4", messages=[], temperature=0.5, top_p=0.9, max_tokens=100, stop=["x"]
         )
         assert req["temperature"] == 0.5
+        assert req["top_p"] == 0.9
         assert req["max_tokens"] == 100
+        assert req["stop"] == ["x"]

@@ -7,12 +7,12 @@ This is the simplest and most reliable backend since OpenRouter natively speaks 
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
-from fastapi import Request
 
-from gateway.backends.base import BackendBase, SSEEvent, json_dumps
+from gateway.backends.base import BackendBase, BackendHealth, SSEEvent
 from gateway.config import get_config
 
 
@@ -27,12 +27,12 @@ class OpenRouterBackend(BackendBase):
     def model_prefix(self) -> str:
         return "claude-openrouter-"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("openrouter")
         self._api_key: str | None = None
         self._base_url: str | None = None
 
-    def _get_config(self):
+    def _get_config(self) -> None:
         config = get_config()
         self._api_key = config.openrouter_api_key
         self._base_url = config.openrouter_base_url.rstrip("/")
@@ -40,18 +40,22 @@ class OpenRouterBackend(BackendBase):
     async def handle_request(
         self,
         model: str,
-        messages: list[dict],
-        tools: list[dict] | None,
-        headers: dict,
-        cwd: Optional[str] = None,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        cwd: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """Pass-through to OpenRouter Anthropic Skin."""
+        """Pass-through to OpenRouter Anthropic Skin.
+
+        Forwards the full Anthropic request body verbatim (system, max_tokens,
+        temperature, top_p, stop_sequences, metadata, ...) with only the model
+        remapped and streaming forced on.
+        """
         self._get_config()
 
         if not self._api_key:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "auth_error", "message": "OPENROUTER_API_KEY not configured"}}
+                data={"type": "error", "error": {"type": "auth_error", "message": "OPENROUTER_API_KEY not configured"}},
             )
             return
 
@@ -60,14 +64,10 @@ class OpenRouterBackend(BackendBase):
         model_key = model[len(self.model_prefix):]
         mapped_model = config.openrouter_model_map.get(model_key, model_key)
 
-        # Build request - keep Anthropic format exactly
-        request_body = {
-            "model": mapped_model,
-            "messages": messages,
-            "stream": True,
-        }
-        if tools:
-            request_body["tools"] = tools
+        # Forward the whole body unchanged, only overriding model + stream.
+        request_body = {k: v for k, v in body.items() if k != "model"}
+        request_body["model"] = mapped_model
+        request_body["stream"] = True
 
         # Prepare headers
         upstream_headers = {
@@ -124,9 +124,8 @@ class OpenRouterBackend(BackendBase):
                 data={"type": "error", "error": {"type": "connection_error", "message": str(e)}}
             )
 
-    async def health_check(self):
+    async def health_check(self) -> BackendHealth:
         """Health check via OpenRouter models endpoint."""
-        from gateway.backends.base import BackendHealth
         import time
 
         self._get_config()

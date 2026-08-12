@@ -25,15 +25,19 @@ dev = [
     "httpx[http2]>=0.27.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "types-PyYAML>=6.0.0",
     "pre-commit>=3.7.0",
 ]
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "T20", "PIE", "PT", "Q", "RUF", "SLF", "TRY"]
 ignore = ["S101", "TRY003"]
-per-file-ignores = { "tests/*" = ["S101", "SLF001"] }
+# Tests carry long inline SSE/JSON literals and exercise broad error paths.
+per-file-ignores = { "tests/*" = ["S101", "SLF001", "E501", "PT011"] }
 
 [tool.ruff.format]
 quote-style = "double"

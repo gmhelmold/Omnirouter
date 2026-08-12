@@ -4,13 +4,14 @@ Tests for discovery module.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from gateway.discovery import (
+    DiscoveryCache,
     build_discovery_payload,
     build_model_entry,
-    DiscoveryCache,
     fetch_live_bridge_models,
 )
 
@@ -32,7 +33,8 @@ class TestBuildDiscoveryPayload:
 
         assert "data" in payload
         assert isinstance(payload["data"], list)
-        assert len(payload["data"]) == 6
+        # 5 single-provider entries + 2 opencode entries (groq, gemini)
+        assert len(payload["data"]) == 7
 
     def test_ids_contain_claude(self):
         config = MagicMock()

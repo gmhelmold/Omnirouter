@@ -1,37 +1,35 @@
 """
-Claude Code Gateway - Main FastAPI Application
+Claude Code Gateway - main FastAPI application.
 
-State-of-the-art gateway with:
-- Anthropic Messages API compatibility
-- Gateway model discovery
-- Multi-backend routing with fallback
-- Structured logging
-- Health monitoring
+- Anthropic Messages API compatibility (streaming and non-streaming).
+- Gateway model discovery (/v1/models).
+- Multi-backend routing with fallback.
+- Structured logging and health monitoring.
 """
 
 from __future__ import annotations
 
-import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any
 
+import orjson
 import structlog
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import Response, StreamingResponse
 
-from gateway.backends.base import SSEEvent
-from gateway.backends.openrouter import OpenRouterBackend
-from gateway.backends.groq import GroqBackend
+from gateway.backends.base import BackendBase
 from gateway.backends.gemini import GeminiBackend
-from gateway.backends.nim import NimBackend
+from gateway.backends.groq import GroqBackend
 from gateway.backends.mistral import MistralBackend
+from gateway.backends.nim import NimBackend
 from gateway.backends.opencode_bridge import OpencodeBridgeBackend
-from gateway.config import config, get_config
+from gateway.backends.openrouter import OpenRouterBackend
 from gateway.discovery import get_discovery_payload
-from gateway.health import check_all_backends, HealthResponse
-from gateway.router import router, get_router
+from gateway.health import check_all_backends
+from gateway.messages import collect_message
+from gateway.router import get_router
 
-# Configure structlog
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -53,17 +51,8 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan - startup and shutdown."""
-    logger.info("claude-gateway starting up")
-
-    # Initialize config
-    cfg = get_config()
-    logger.info("config loaded", port=cfg.port, log_level=cfg.log_level)
-
-    # Initialize backends
-    backends = [
+def _build_backends() -> list[BackendBase]:
+    return [
         OpenRouterBackend(),
         GroqBackend(),
         GeminiBackend(),
@@ -72,27 +61,47 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         OpencodeBridgeBackend(),
     ]
 
-    # Initialize router with backends
+
+def _json_response(payload: object, status_code: int = 200) -> Response:
+    return Response(
+        content=orjson.dumps(payload),
+        media_type="application/json",
+        status_code=status_code,
+    )
+
+
+def _error_response(error_type: str, message: str, status_code: int) -> Response:
+    return _json_response(
+        {"type": "error", "error": {"type": error_type, "message": message}},
+        status_code=status_code,
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan - startup and shutdown."""
+    from gateway.config import get_config
+
+    cfg = get_config()
+    logger.info("claude-gateway starting up", port=cfg.port, log_level=cfg.log_level)
+
+    backends = _build_backends()
     get_router().initialize(backends)
-
-    # Store backends in app state for shutdown
     app.state.backends = backends
-
     logger.info("all backends initialized", backends=[b.provider_name for b in backends])
 
     yield
 
-    # Shutdown
     logger.info("claude-gateway shutting down")
     for backend in backends:
         try:
             await backend.close()
-        except Exception as e:
-            logger.warning("error closing backend", backend=backend.name, error=str(e))
+        except Exception as exc:
+            logger.warning("error closing backend", backend=backend.name, error=str(exc))
 
 
 def create_app() -> FastAPI:
-    """Create and configure FastAPI application."""
+    """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Claude Code Gateway",
         version="0.1.0",
@@ -100,9 +109,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Request logging middleware
     @app.middleware("http")
-    async def log_requests(request: Request, call_next):
+    async def log_requests(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         structlog.contextvars.bind_contextvars(
             method=request.method,
             path=request.url.path,
@@ -112,55 +122,48 @@ def create_app() -> FastAPI:
         logger.info("request completed", status_code=response.status_code)
         return response
 
-    # Routes
     @app.get("/v1/models")
-    async def list_models():
+    async def list_models() -> Response:
         """Model discovery endpoint for Claude Code."""
-        cfg = get_config()
-        payload = await get_discovery_payload(cfg)
-        return Response(
-            content=payload,
-            media_type="application/json",
-        )
+        from gateway.config import get_config
+
+        payload = await get_discovery_payload(get_config())
+        return _json_response(payload)
 
     @app.post("/v1/messages")
-    async def messages(request: Request):
+    async def messages(request: Request) -> Response:
         """Anthropic Messages API endpoint with routing and fallback."""
         try:
             body = await request.json()
         except Exception:
-            return Response(
-                content='{"type":"error","error":{"type":"invalid_request","message":"Invalid JSON"}}',
-                media_type="application/json",
-                status_code=400,
-            )
+            return _error_response("invalid_request", "Invalid JSON", 400)
+
+        if not isinstance(body, dict):
+            return _error_response("invalid_request", "Request body must be an object", 400)
 
         model = body.get("model")
-        messages = body.get("messages", [])
-        tools = body.get("tools")
-        headers = dict(request.headers)
-
         if not model:
-            return Response(
-                content='{"type":"error","error":{"type":"invalid_request","message":"model is required"}}',
-                media_type="application/json",
-                status_code=400,
-            )
+            return _error_response("invalid_request", "model is required", 400)
 
-        # Route through router with fallback
+        headers = dict(request.headers)
         router_instance = get_router()
+        stream = body.get("stream", True)
 
-        async def event_stream():
-            async for event in router_instance.route_with_fallback(
-                model, messages, tools, headers, cwd=None
-            ):
-                # Handle raw passthrough (OpenRouter)
+        if not stream:
+            events = []
+            async for event in router_instance.route_with_fallback(model, body, headers, cwd=None):
+                if event.event == "error":
+                    return _json_response(event.data, status_code=502)
+                events.append(event)
+            return _json_response(collect_message(events, model))
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            async for event in router_instance.route_with_fallback(model, body, headers, cwd=None):
                 if event.event == "raw":
                     yield event.data["line"] + "\n"
                 elif event.event:
                     yield f"event: {event.event}\n"
                     if event.data is not None:
-                        import orjson
                         yield f"data: {orjson.dumps(event.data).decode()}\n"
                     if event.retry:
                         yield f"retry: {event.retry}\n"
@@ -173,41 +176,19 @@ def create_app() -> FastAPI:
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
-            }
+            },
         )
 
     @app.get("/health")
-    async def health():
+    async def health(request: Request) -> Response:
         """Health check endpoint."""
-        backends = getattr(globals().get("app"), "state", {}).get("backends", [])
-        if not backends:
-            # Fallback: create fresh instances
-            from gateway.backends.openrouter import OpenRouterBackend
-            from gateway.backends.groq import GroqBackend
-            from gateway.backends.gemini import GeminiBackend
-            from gateway.backends.nim import NimBackend
-            from gateway.backends.mistral import MistralBackend
-            from gateway.backends.opencode_bridge import OpencodeBridgeBackend
-
-            backends = [
-                OpenRouterBackend(),
-                GroqBackend(),
-                GeminiBackend(),
-                NimBackend(),
-                MistralBackend(),
-                OpencodeBridgeBackend(),
-            ]
-
+        backends = getattr(request.app.state, "backends", None) or _build_backends()
         health_response = await check_all_backends(backends)
         status_code = 200 if health_response.status == "healthy" else 503
-        return Response(
-            content=health_response.to_dict(),
-            media_type="application/json",
-            status_code=status_code,
-        )
+        return _json_response(health_response.to_dict(), status_code=status_code)
 
     @app.get("/")
-    async def root():
+    async def root() -> dict[str, Any]:
         """Root endpoint with basic info."""
         return {
             "name": "Claude Code Gateway",
@@ -216,22 +197,25 @@ def create_app() -> FastAPI:
                 "models": "/v1/models",
                 "messages": "/v1/messages",
                 "health": "/health",
-            }
+            },
         }
 
     return app
 
 
-# Create app instance
 app = create_app()
 
 
 if __name__ == "__main__":
     import uvicorn
+
+    from gateway.config import get_config
+
+    cfg = get_config()
     uvicorn.run(
         "gateway.main:app",
-        host=config.host,
-        port=config.port,
-        log_level=config.log_level.lower(),
+        host=cfg.host,
+        port=cfg.port,
+        log_level=cfg.log_level.lower(),
         reload=False,
     )

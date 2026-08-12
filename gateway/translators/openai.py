@@ -1,106 +1,110 @@
 """
-OpenAI ↔ Anthropic Translation Module
+OpenAI <-> Anthropic translation.
 
-State-of-the-art translation with:
-- Full message format conversion (system, user, assistant, tool)
-- Streaming SSE parsing with tool_calls buffering
-- Error normalization to Anthropic format
-- Proper handling of partial tool_calls across chunks
+Covers:
+- Request translation (Anthropic messages + system + tools -> OpenAI chat).
+- A streaming state machine that turns an OpenAI SSE stream into a *correct*
+  Anthropic event sequence: message_start, content_block_start,
+  content_block_delta (text_delta / input_json_delta), content_block_stop,
+  message_delta, message_stop.
+- Error normalization to Anthropic format.
+
+The translator is a stateful object rather than a single-shot function so that
+one upstream line can emit several Anthropic events (e.g. opening a block and
+its first delta) without ever dropping any.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
 
+from gateway.backends.base import SSEEvent
 from gateway.translators.tool_schema import anthropic_tool_to_openai_function
 
+# OpenAI finish_reason -> Anthropic stop_reason
+_STOP_REASON_MAP = {
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "tool_calls": "tool_use",
+    "function_call": "tool_use",
+    "content_filter": "end_turn",
+}
 
-@dataclass
-class SSEEvent:
-    """Normalized SSE event for Anthropic format."""
-    event: str  # message_start, content_block_delta, message_stop, message_delta, error
-    data: dict[str, Any]
-    retry: int = 0
 
-
-@dataclass
-class OpenAIStreamBuffer:
-    """Buffer state for parsing OpenAI SSE streams."""
-    tool_calls: dict[int, dict[str, Any]] = field(default_factory=dict)  # index -> partial tool_call
-    current_text: str = ""
-    message_started: bool = False
-    content_block_index: int = 0
+def _system_to_text(system: Any) -> str | None:
+    """Normalize an Anthropic top-level ``system`` field to plain text."""
+    if system is None:
+        return None
+    if isinstance(system, str):
+        return system or None
+    if isinstance(system, list):
+        parts = [b.get("text", "") for b in system if isinstance(b, dict) and b.get("type") == "text"]
+        text = "\n".join(p for p in parts if p)
+        return text or None
+    return None
 
 
 def anthropic_to_openai(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
+    system: Any = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
     """
-    Convert Anthropic messages + tools to OpenAI format.
+    Convert Anthropic messages + system + tools to OpenAI format.
 
-    Args:
-        messages: Anthropic format messages
-        tools: Anthropic format tools
-
-    Returns:
-        (openai_messages, openai_functions)
+    Returns ``(openai_messages, openai_functions)``.
     """
-    openai_messages = []
-    openai_functions = None
+    openai_messages: list[dict[str, Any]] = []
+    openai_functions: list[dict[str, Any]] | None = None
 
-    # Convert tools first
     if tools:
-        openai_functions = [
-            anthropic_tool_to_openai_function(t) for t in tools
-        ]
+        openai_functions = [anthropic_tool_to_openai_function(t) for t in tools]
+
+    system_text = _system_to_text(system)
+    if system_text:
+        openai_messages.append({"role": "system", "content": system_text})
 
     for msg in messages:
         role = msg.get("role")
         content = msg.get("content")
 
         if role == "system":
-            # OpenAI uses system role
-            if isinstance(content, str):
-                openai_messages.append({"role": "system", "content": content})
-            elif isinstance(content, list):
-                # Handle complex system content (text blocks)
-                text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
-                openai_messages.append({"role": "system", "content": "\n".join(text_parts)})
+            text = content if isinstance(content, str) else _system_to_text(content)
+            if text:
+                openai_messages.append({"role": "system", "content": text})
 
         elif role == "user":
             if isinstance(content, str):
                 openai_messages.append({"role": "user", "content": content})
             elif isinstance(content, list):
-                # Handle multimodal content
-                openai_content = []
+                openai_content: list[dict[str, Any]] = []
                 for block in content:
-                    if block.get("type") == "text":
+                    btype = block.get("type")
+                    if btype == "text":
                         openai_content.append({"type": "text", "text": block.get("text", "")})
-                    elif block.get("type") == "image":
-                        # Convert to OpenAI image format
-                        openai_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": block.get("source", {}).get("data", "")}
-                        })
-                    elif block.get("type") == "tool_result":
-                        # Tool result → function role in OpenAI
+                    elif btype == "image":
+                        source = block.get("source", {})
+                        media_type = source.get("media_type", "image/png")
+                        data = source.get("data", "")
+                        url = data if data.startswith("http") else f"data:{media_type};base64,{data}"
+                        openai_content.append({"type": "image_url", "image_url": {"url": url}})
+                    elif btype == "tool_result":
                         tool_use_id = block.get("tool_use_id", "")
                         result_content = block.get("content", "")
                         if isinstance(result_content, list):
                             result_content = "\n".join(
-                                c.get("text", "") for c in result_content if c.get("type") == "text"
+                                c.get("text", "") for c in result_content
+                                if isinstance(c, dict) and c.get("type") == "text"
                             )
                         openai_messages.append({
                             "role": "tool",
                             "tool_call_id": tool_use_id,
-                            "content": str(result_content)
+                            "content": str(result_content),
                         })
-                        continue  # Don't add as user message
                 if openai_content:
                     openai_messages.append({"role": "user", "content": openai_content})
 
@@ -108,197 +112,28 @@ def anthropic_to_openai(
             if isinstance(content, str):
                 openai_messages.append({"role": "assistant", "content": content})
             elif isinstance(content, list):
-                # Handle text + tool_use blocks
-                text_parts = []
-                tool_calls = []
+                text_parts: list[str] = []
+                tool_calls: list[dict[str, Any]] = []
                 for idx, block in enumerate(content):
-                    if block.get("type") == "text":
+                    btype = block.get("type")
+                    if btype == "text":
                         text_parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
+                    elif btype == "tool_use":
                         tool_calls.append({
                             "id": block.get("id", f"call_{idx}"),
                             "type": "function",
                             "function": {
                                 "name": block.get("name", ""),
-                                "arguments": json.dumps(block.get("input", {}))
-                            }
+                                "arguments": json.dumps(block.get("input", {})),
+                            },
                         })
-                msg = {"role": "assistant"}
-                if text_parts:
-                    msg["content"] = "\n".join(text_parts)
+                out: dict[str, Any] = {"role": "assistant"}
+                out["content"] = "\n".join(text_parts) if text_parts else None
                 if tool_calls:
-                    msg["tool_calls"] = tool_calls
-                openai_messages.append(msg)
+                    out["tool_calls"] = tool_calls
+                openai_messages.append(out)
 
     return openai_messages, openai_functions
-
-
-def openai_sse_to_anthropic(line: str, buffer: OpenAIStreamBuffer) -> tuple[SSEEvent | None, OpenAIStreamBuffer]:
-    """
-    Parse OpenAI SSE line and yield Anthropic SSE event.
-
-    Handles:
-    - Text deltas
-    - Tool calls (buffered across chunks)
-    - Finish reasons
-    - Error events
-
-    Args:
-        line: Raw SSE line (e.g., "data: {...}")
-        buffer: Mutable buffer state
-
-    Returns:
-        (event_or_none, updated_buffer)
-    """
-    line = line.strip()
-    if not line or not line.startswith("data:"):
-        return None, buffer
-
-    data_str = line[5:].strip()
-    if data_str == "[DONE]":
-        # Stream complete - flush any pending tool calls
-        if buffer.tool_calls:
-            # Emit final tool calls as content_block_delta events
-            for idx in sorted(buffer.tool_calls.keys()):
-                tc = buffer.tool_calls[idx]
-                event = SSEEvent(
-                    event="content_block_delta",
-                    data={
-                        "index": buffer.content_block_index,
-                        "delta": {
-                            "type": "tool_use",
-                            "id": tc.get("id", f"call_{idx}"),
-                            "name": tc["function"]["name"],
-                            "input": tc["function"].get("arguments", "")
-                        }
-                    }
-                )
-                buffer.content_block_index += 1
-                return event, OpenAIStreamBuffer()  # Reset buffer
-
-        return SSEEvent(event="message_stop", data={}), OpenAIStreamBuffer()
-
-    try:
-        chunk = json.loads(data_str)
-    except json.JSONDecodeError:
-        return None, buffer
-
-    choices = chunk.get("choices", [])
-    if not choices:
-        return None, buffer
-
-    choice = choices[0]
-    delta = choice.get("delta", {})
-    finish_reason = choice.get("finish_reason")
-
-    # Handle role (first chunk)
-    if "role" in delta and not buffer.message_started:
-        buffer.message_started = True
-        return SSEEvent(
-            event="message_start",
-            data={"message": {"id": chunk.get("id", "msg_"), "type": "message", "role": "assistant", "content": [], "model": chunk.get("model", ""), "usage": None}}
-        ), buffer
-
-    # Handle content delta
-    if "content" in delta and delta["content"] is not None:
-        text = delta["content"]
-        if text:
-            buffer.current_text += text
-            event = SSEEvent(
-                event="content_block_delta",
-                data={
-                    "index": buffer.content_block_index,
-                    "delta": {"type": "text", "text": text}
-                }
-            )
-            return event, buffer
-
-    # Handle tool_calls (streamed in chunks)
-    if "tool_calls" in delta and delta["tool_calls"]:
-        for tc_chunk in delta["tool_calls"]:
-            idx = tc_chunk.get("index", 0)
-            if idx not in buffer.tool_calls:
-                buffer.tool_calls[idx] = {
-                    "id": tc_chunk.get("id", f"call_{idx}"),
-                    "function": {"name": "", "arguments": ""}
-                }
-            tc = buffer.tool_calls[idx]
-
-            if "function" in tc_chunk:
-                func = tc_chunk["function"]
-                if "name" in func and func["name"]:
-                    tc["function"]["name"] = func["name"]
-                if "arguments" in func and func["arguments"]:
-                    tc["function"]["arguments"] += func["arguments"]
-
-    # Handle finish
-    if finish_reason is not None:
-        # Emit any pending text first
-        events = []
-        if buffer.current_text:
-            events.append(SSEEvent(
-                event="content_block_delta",
-                data={"index": buffer.content_block_index, "delta": {"type": "text", "text": buffer.current_text}}
-            ))
-            buffer.content_block_index += 1
-            buffer.current_text = ""
-
-        # Emit completed tool calls
-        for idx in sorted(buffer.tool_calls.keys()):
-            tc = buffer.tool_calls[idx]
-            if tc["function"]["name"]:
-                events.append(SSEEvent(
-                    event="content_block_delta",
-                    data={
-                        "index": buffer.content_block_index,
-                        "delta": {
-                            "type": "tool_use",
-                            "id": tc.get("id", f"call_{idx}"),
-                            "name": tc["function"]["name"],
-                            "input": tc["function"]["arguments"]
-                        }
-                    }
-                ))
-                buffer.content_block_index += 1
-
-        # Final message_stop
-        events.append(SSEEvent(event="message_stop", data={}))
-
-        # Return first event, store rest in buffer for next call
-        if events:
-            first = events[0]
-            # Store remaining events in buffer for next iteration
-            # (simplified: just return first, caller should handle multiple)
-            return first, OpenAIStreamBuffer()
-
-    return None, buffer
-
-
-def normalize_openai_error(response: httpx.Response) -> dict[str, Any]:
-    """
-    Convert OpenAI error response to Anthropic error format.
-
-    OpenAI: {error: {message, type, code, param}}
-    Anthropic: {type: "error", error: {type, message}}
-    """
-    try:
-        err_data = response.json()
-        openai_err = err_data.get("error", {})
-        return {
-            "type": "error",
-            "error": {
-                "type": openai_err.get("type", "api_error"),
-                "message": openai_err.get("message", "Unknown error from provider")
-            }
-        }
-    except Exception:
-        return {
-            "type": "error",
-            "error": {
-                "type": "api_error",
-                "message": f"HTTP {response.status_code}: {response.text[:500]}"
-            }
-        }
 
 
 def build_openai_request(
@@ -307,10 +142,12 @@ def build_openai_request(
     tools: list[dict[str, Any]] | None = None,
     stream: bool = True,
     temperature: float | None = None,
+    top_p: float | None = None,
     max_tokens: int | None = None,
+    stop: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build OpenAI chat completions request."""
-    req = {
+    """Build an OpenAI chat completions request body."""
+    req: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "stream": stream,
@@ -320,6 +157,280 @@ def build_openai_request(
         req["tool_choice"] = "auto"
     if temperature is not None:
         req["temperature"] = temperature
+    if top_p is not None:
+        req["top_p"] = top_p
     if max_tokens is not None:
         req["max_tokens"] = max_tokens
+    if stop:
+        req["stop"] = stop
     return req
+
+
+class OpenAITranslator:
+    """Streaming state machine: OpenAI SSE lines -> Anthropic SSE events."""
+
+    def __init__(self) -> None:
+        self._message_started = False
+        self._finished = False
+        self._next_index = 0
+        self._text_index: int | None = None  # anthropic index of open text block
+        # openai tool index -> record
+        self._tools: dict[int, dict[str, Any]] = {}
+        self._stop_reason = "end_turn"
+        self._output_tokens = 0
+        self._model = ""
+
+    # -- public API ---------------------------------------------------------
+
+    def feed(self, line: str) -> list[SSEEvent]:
+        """Consume one raw upstream SSE line, return Anthropic events."""
+        line = line.strip()
+        if not line or not line.startswith("data:"):
+            return []
+
+        data_str = line[5:].strip()
+        if data_str == "[DONE]":
+            return self.flush()
+
+        try:
+            chunk = json.loads(data_str)
+        except json.JSONDecodeError:
+            return []
+
+        events: list[SSEEvent] = []
+
+        if not self._model:
+            self._model = chunk.get("model", "") or ""
+
+        usage = chunk.get("usage")
+        if isinstance(usage, dict) and usage.get("completion_tokens") is not None:
+            self._output_tokens = usage["completion_tokens"]
+
+        choices = chunk.get("choices") or []
+        if not choices:
+            return events
+
+        choice = choices[0]
+        delta = choice.get("delta", {}) or {}
+        finish_reason = choice.get("finish_reason")
+
+        events.extend(self._ensure_started(chunk))
+
+        content = delta.get("content")
+        if content:
+            events.extend(self._emit_text(content))
+
+        tool_calls = delta.get("tool_calls")
+        if tool_calls:
+            events.extend(self._emit_tool_calls(tool_calls))
+
+        if finish_reason is not None:
+            self._stop_reason = _STOP_REASON_MAP.get(finish_reason, "end_turn")
+            events.extend(self.flush())
+
+        return events
+
+    def flush(self) -> list[SSEEvent]:
+        """Emit closing events. Idempotent."""
+        if self._finished:
+            return []
+        self._finished = True
+
+        events: list[SSEEvent] = []
+        if not self._message_started:
+            # Nothing ever streamed; still produce a well-formed empty message.
+            events.extend(self._ensure_started({}))
+
+        if self._text_index is not None:
+            events.append(self._content_block_stop(self._text_index))
+            self._text_index = None
+
+        for rec in self._tools.values():
+            if rec["started"]:
+                events.append(self._content_block_stop(rec["anthropic_index"]))
+
+        events.append(SSEEvent(
+            event="message_delta",
+            data={
+                "type": "message_delta",
+                "delta": {"stop_reason": self._stop_reason, "stop_sequence": None},
+                "usage": {"output_tokens": self._output_tokens},
+            },
+        ))
+        events.append(SSEEvent(event="message_stop", data={"type": "message_stop"}))
+        return events
+
+    # -- internals ----------------------------------------------------------
+
+    def _ensure_started(self, chunk: dict[str, Any]) -> list[SSEEvent]:
+        if self._message_started:
+            return []
+        self._message_started = True
+        return [SSEEvent(
+            event="message_start",
+            data={
+                "type": "message_start",
+                "message": {
+                    "id": chunk.get("id") or "msg_gateway",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": self._model,
+                    "content": [],
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+            },
+        )]
+
+    def _emit_text(self, text: str) -> list[SSEEvent]:
+        events: list[SSEEvent] = []
+        if self._text_index is None:
+            self._text_index = self._next_index
+            self._next_index += 1
+            events.append(SSEEvent(
+                event="content_block_start",
+                data={
+                    "type": "content_block_start",
+                    "index": self._text_index,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            ))
+        events.append(SSEEvent(
+            event="content_block_delta",
+            data={
+                "type": "content_block_delta",
+                "index": self._text_index,
+                "delta": {"type": "text_delta", "text": text},
+            },
+        ))
+        return events
+
+    def _emit_tool_calls(self, tool_calls: list[dict[str, Any]]) -> list[SSEEvent]:
+        events: list[SSEEvent] = []
+
+        # A tool call closes any open text block.
+        if self._text_index is not None:
+            events.append(self._content_block_stop(self._text_index))
+            self._text_index = None
+
+        for tc in tool_calls:
+            key = tc.get("index", 0)
+            rec = self._tools.get(key)
+            if rec is None:
+                rec = {"id": "", "name": "", "started": False, "anthropic_index": None, "pending_args": ""}
+                self._tools[key] = rec
+
+            if tc.get("id"):
+                rec["id"] = tc["id"]
+            func = tc.get("function") or {}
+            if func.get("name"):
+                rec["name"] += func["name"]
+            arg_fragment = func.get("arguments") or ""
+
+            if not rec["started"] and rec["name"]:
+                rec["started"] = True
+                rec["anthropic_index"] = self._next_index
+                self._next_index += 1
+                events.append(SSEEvent(
+                    event="content_block_start",
+                    data={
+                        "type": "content_block_start",
+                        "index": rec["anthropic_index"],
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": rec["id"] or f"toolu_{key}",
+                            "name": rec["name"],
+                            "input": {},
+                        },
+                    },
+                ))
+                # Flush any args that arrived before the name.
+                if rec["pending_args"]:
+                    arg_fragment = rec["pending_args"] + arg_fragment
+                    rec["pending_args"] = ""
+
+            if arg_fragment:
+                if rec["started"]:
+                    events.append(SSEEvent(
+                        event="content_block_delta",
+                        data={
+                            "type": "content_block_delta",
+                            "index": rec["anthropic_index"],
+                            "delta": {"type": "input_json_delta", "partial_json": arg_fragment},
+                        },
+                    ))
+                else:
+                    rec["pending_args"] += arg_fragment
+
+        return events
+
+    @staticmethod
+    def _content_block_stop(index: int) -> SSEEvent:
+        return SSEEvent(
+            event="content_block_stop",
+            data={"type": "content_block_stop", "index": index},
+        )
+
+
+async def stream_openai_compatible(
+    client: httpx.AsyncClient,
+    url: str,
+    request_body: dict[str, Any],
+    headers: dict[str, str],
+    *,
+    provider: str = "provider",
+    read_timeout: float = 600.0,
+) -> AsyncGenerator[SSEEvent, None]:
+    """
+    POST an OpenAI-compatible chat completions request and stream translated
+    Anthropic events. Shared by the Groq / Mistral / NIM / opencode backends.
+    """
+    translator = OpenAITranslator()
+    timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0)
+    try:
+        async with client.stream("POST", url, json=request_body, headers=headers, timeout=timeout) as response:
+            if response.status_code >= 400:
+                await response.aread()
+                yield SSEEvent(event="error", data=normalize_openai_error(response))
+                return
+            async for line in response.aiter_lines():
+                for event in translator.feed(line):
+                    yield event
+        for event in translator.flush():
+            yield event
+    except httpx.TimeoutException:
+        yield SSEEvent(
+            event="error",
+            data={"type": "error", "error": {"type": "timeout", "message": f"{provider} request timed out"}},
+        )
+    except httpx.HTTPError as exc:
+        yield SSEEvent(
+            event="error",
+            data={"type": "error", "error": {"type": "connection_error", "message": str(exc)}},
+        )
+
+
+def normalize_openai_error(response: httpx.Response) -> dict[str, Any]:
+    """Convert an OpenAI error response to Anthropic error format."""
+    try:
+        err_data = response.json()
+        openai_err = err_data.get("error", {})
+        etype = openai_err.get("type") or "api_error"
+        if response.status_code == 429:
+            etype = "rate_limit"
+        return {
+            "type": "error",
+            "error": {
+                "type": etype,
+                "message": openai_err.get("message", "Unknown error from provider"),
+            },
+        }
+    except Exception:
+        return {
+            "type": "error",
+            "error": {
+                "type": "rate_limit" if response.status_code == 429 else "api_error",
+                "message": f"HTTP {response.status_code}: {response.text[:500]}",
+            },
+        }

@@ -4,12 +4,12 @@ Pytest configuration and fixtures.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+import pytest
 
-from gateway.config import GatewayConfig, GatewayYamlConfig
+from gateway.config import GatewayConfig
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def mock_config():
 @pytest.fixture
 def mock_httpx_response():
     """Create a mock httpx response."""
-    def _make(status_code: int = 200, json_data: dict = None, text: str = ""):
+    def _make(status_code: int = 200, json_data: dict | None = None, text: str = ""):
         response = MagicMock(spec=httpx.Response)
         response.status_code = status_code
         response.json = AsyncMock(return_value=json_data or {})

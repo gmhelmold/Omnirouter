@@ -10,12 +10,11 @@ State-of-the-art configuration using Pydantic Settings v2 with:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -71,12 +70,16 @@ class OpencodeBridgeModelMap(BaseModel):
 
 
 class FallbackChains(BaseModel):
-    groq: list[str] = Field(default_factory=lambda: ["groq", "openrouter-groq", "opencode-groq"])
-    gemini: list[str] = Field(default_factory=lambda: ["gemini", "opencode-gemini", "openrouter-gemini"])
-    mistral: list[str] = Field(default_factory=lambda: ["mistral", "opencode-mistral", "openrouter-mistral"])
-    nim: list[str] = Field(default_factory=lambda: ["nim", "openrouter-nim"])
-    openrouter: list[str] = Field(default_factory=lambda: ["openrouter"])
-    opencode: list[str] = Field(default_factory=lambda: ["opencode"])
+    # Entries are registered backend provider_names. The primary is implicit
+    # (it is the backend that owns the model prefix); these are the *fallbacks*
+    # tried after it, in order. "opencode" reruns the same provider via the
+    # opencode-bridge instance, so the shared model key maps cleanly.
+    groq: list[str] = Field(default_factory=lambda: ["opencode"])
+    gemini: list[str] = Field(default_factory=lambda: ["opencode"])
+    mistral: list[str] = Field(default_factory=lambda: ["opencode"])
+    nim: list[str] = Field(default_factory=list)
+    openrouter: list[str] = Field(default_factory=list)
+    opencode: list[str] = Field(default_factory=list)
 
     model_config = {"extra": "allow"}
 

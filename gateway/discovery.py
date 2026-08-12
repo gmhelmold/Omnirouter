@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from gateway.config import get_config
+if TYPE_CHECKING:
+    from gateway.config import GatewayConfig
 
 
 def build_model_entry(model_id: str, display_name: str) -> dict[str, Any]:
@@ -26,7 +27,7 @@ def build_model_entry(model_id: str, display_name: str) -> dict[str, Any]:
     }
 
 
-def build_discovery_payload(config) -> dict[str, list[dict[str, Any]]]:
+def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, Any]]]:
     """
     Build complete discovery payload from config.
 
@@ -67,12 +68,14 @@ def build_discovery_payload(config) -> dict[str, list[dict[str, Any]]]:
     for entry in entries:
         id_ = entry["id"]
         if "claude" not in id_.lower() and "anthropic" not in id_.lower():
-            raise ValueError(f"Model ID '{id_}' will be filtered by Claude Code discovery (missing 'claude'/'anthropic')")
+            raise ValueError(
+                f"Model ID '{id_}' will be filtered by Claude Code discovery (missing 'claude'/'anthropic')"
+            )
 
     return {"data": entries}
 
 
-async def fetch_live_bridge_models(config) -> list[dict[str, Any]]:
+async def fetch_live_bridge_models(config: GatewayConfig) -> list[dict[str, Any]]:
     """
     Fetch live models from each opencode-bridge instance.
 
@@ -133,7 +136,7 @@ class DiscoveryCache:
                 pass
         return None
 
-    def save(self, payload: dict[str, Any]):
+    def save(self, payload: dict[str, Any]) -> None:
         """Save to disk cache."""
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
@@ -150,14 +153,14 @@ class DiscoveryCache:
 _discovery_cache: DiscoveryCache | None = None
 
 
-def get_discovery_cache(config) -> DiscoveryCache:
+def get_discovery_cache(config: GatewayConfig) -> DiscoveryCache:
     global _discovery_cache
     if _discovery_cache is None:
         _discovery_cache = DiscoveryCache(config.discovery_cache_path, config.discovery_cache_ttl)
     return _discovery_cache
 
 
-async def get_discovery_payload(config) -> dict[str, list[dict[str, Any]]]:
+async def get_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, Any]]]:
     """
     Get complete discovery payload (static + live bridge models).
 
