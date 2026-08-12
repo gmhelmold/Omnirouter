@@ -125,11 +125,18 @@ def create_app() -> FastAPI:
         return response
 
     @app.get("/v1/models")
-    async def list_models() -> Response:
-        """Model discovery endpoint for Claude Code."""
+    async def list_models(request: Request) -> Response:
+        """Model discovery endpoint for Claude Code.
+
+        Pass ``?free=1`` to list only the free-tagged models (handy for
+        eyeballing what costs nothing); Claude Code itself calls it unfiltered.
+        """
         from gateway.config import get_config
 
         payload = await get_discovery_payload(get_config())
+        if request.query_params.get("free") in ("1", "true", "yes"):
+            data = [m for m in payload.get("data", []) if "FREE 🆓" in m.get("display_name", "")]
+            payload = {"data": data}
         return _json_response(payload)
 
     @app.post("/v1/messages")

@@ -121,6 +121,12 @@ class GatewayYamlConfig(BaseModel):
         "mistral": "http://localhost:5003",
     })
     fallback_chains: FallbackChains = Field(default_factory=FallbackChains)
+    # Providers whose entire catalog is free-tier. Every model from these is
+    # badged FREE in discovery. (OpenRouter is mixed, so its free models are
+    # detected per-slug instead — any ":free" slug or "free-" key.)
+    free_tier_providers: list[str] = Field(
+        default_factory=lambda: ["groq", "gemini", "mistral", "cerebras"]
+    )
 
     model_config = {"extra": "allow"}
 
@@ -235,6 +241,10 @@ class GatewayConfig(BaseSettings):
     @property
     def fallback_chains(self) -> dict[str, list[str]]:
         return self.yaml.fallback_chains.model_dump()
+
+    @property
+    def free_tier_providers(self) -> list[str]:
+        return self.yaml.free_tier_providers
 
 
 # Global config instance

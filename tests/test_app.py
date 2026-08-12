@@ -59,6 +59,20 @@ async def test_models_returns_json(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_models_free_filter(client, monkeypatch):
+    async def fake_payload(_cfg):
+        return {"data": [
+            {"id": "claude-openrouter-opus-5", "display_name": "x (OpenRouter)"},
+            {"id": "claude-groq-llama3", "display_name": "y (Groq · FREE 🆓)"},
+        ]}
+
+    monkeypatch.setattr("gateway.main.get_discovery_payload", fake_payload)
+    resp = await client.get("/v1/models?free=1")
+    ids = [m["id"] for m in resp.json()["data"]]
+    assert ids == ["claude-groq-llama3"]
+
+
+@pytest.mark.asyncio
 async def test_messages_missing_model(client):
     resp = await client.post("/v1/messages", json={"messages": []})
     assert resp.status_code == 400

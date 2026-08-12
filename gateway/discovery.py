@@ -36,39 +36,48 @@ def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, A
     """
     entries = []
 
-    # OpenRouter — slugs ending in ":free" are the no-cost tier; tag them so
-    # they stand out in Claude Code's /model picker.
-    for key, display in config.openrouter_model_map.items():
-        is_free = str(display).endswith(":free")
-        suffix = "OpenRouter · FREE 🆓" if is_free else "OpenRouter"
-        entries.append(build_model_entry(f"claude-openrouter-{key}", f"{display} ({suffix})"))
+    # Providers whose whole catalog is free-tier. Coerced defensively so a
+    # mock/partial config can't blow up discovery.
+    ftp = getattr(config, "free_tier_providers", None)
+    free_providers = set(ftp) if isinstance(ftp, (list, set, tuple)) else set()
 
-    # Groq
-    for key, display in config.groq_model_map.items():
-        entries.append(build_model_entry(f"claude-groq-{key}", f"{display} (Groq)"))
+    def is_free(provider: str, key: str, slug: str) -> bool:
+        """A model is free if its provider is free-tier, its slug ends in
+        ':free' (OpenRouter), or its key is named 'free-*'."""
+        return (
+            provider in free_providers
+            or str(slug).endswith(":free")
+            or str(key).lower().startswith("free")
+        )
 
-    # Gemini
-    for key, display in config.gemini_model_map.items():
-        entries.append(build_model_entry(f"claude-gemini-{key}", f"{display} (Free)"))
+    def label(provider_label: str, free: bool) -> str:
+        return f"{provider_label} · FREE 🆓" if free else provider_label
 
-    # NIM
-    for key, display in config.nim_model_map.items():
-        entries.append(build_model_entry(f"claude-nim-{key}", f"{display} (NIM)"))
+    # provider_id, human label, model map
+    simple_providers = [
+        ("openrouter", "OpenRouter", config.openrouter_model_map),
+        ("groq", "Groq", config.groq_model_map),
+        ("gemini", "Gemini", config.gemini_model_map),
+        ("nim", "NIM", config.nim_model_map),
+        ("mistral", "Mistral", config.mistral_model_map),
+        ("cerebras", "Cerebras", config.cerebras_model_map),
+    ]
+    for provider, provider_label, model_map in simple_providers:
+        for key, slug in model_map.items():
+            free = is_free(provider, key, slug)
+            entries.append(build_model_entry(
+                f"claude-{provider}-{key}",
+                f"{slug} ({label(provider_label, free)})",
+            ))
 
-    # Mistral
-    for key, display in config.mistral_model_map.items():
-        entries.append(build_model_entry(f"claude-mistral-{key}", f"{display} (Free)"))
-
-    # Cerebras
-    for key, display in config.cerebras_model_map.items():
-        entries.append(build_model_entry(f"claude-cerebras-{key}", f"{display} (Free)"))
-
-    # Opencode Bridge
+    # Opencode Bridge (nested by provider)
     for provider, models in config.opencode_bridge_model_map.items():
-        for model_key, display in models.items():
+        for model_key, slug in models.items():
+            free = is_free(provider, model_key, slug)
+            suffix = label(f"opencode:{provider}", free)
             entries.append(build_model_entry(
                 f"claude-opencode-{provider}-{model_key}",
-                f"opencode: {display}"
+                f"{slug} ({suffix})",
             ))
 
     # Validate all IDs contain 'claude' or 'anthropic'
