@@ -18,7 +18,7 @@ class HealthResponse:
     """Aggregated health response."""
     status: str  # "healthy", "degraded", "unhealthy"
     backends: dict[str, BackendHealth]
-    timestamp: float = field(default_factory=lambda: __import__('time').time())
+    timestamp: float = field(default_factory=lambda: __import__("time").time())
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,7 +52,7 @@ async def check_all_backends(backends: list[BackendBase]) -> HealthResponse:
     healthy_count = 0
     total_count = len(backends)
 
-    for backend, result in zip(backends, health_results):
+    for backend, result in zip(backends, health_results, strict=True):
         if isinstance(result, Exception):
             backend_health[backend.provider_name] = BackendHealth(
                 name=backend.name,
@@ -94,5 +94,5 @@ async def quick_health_check(backends: list[BackendBase]) -> dict[str, bool]:
         backend.provider_name: (
             isinstance(r, BackendHealth) and r.healthy
         )
-        for backend, r in zip(backends, results)
+        for backend, r in zip(backends, results, strict=True)
     }

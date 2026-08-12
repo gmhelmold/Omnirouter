@@ -7,10 +7,10 @@ from __future__ import annotations
 import pytest
 
 from gateway.translators.tool_schema import (
-    anthropic_tool_to_openai_function,
     anthropic_tool_to_gemini_declaration,
-    openai_function_to_anthropic_tool,
+    anthropic_tool_to_openai_function,
     batch_convert_tools,
+    openai_function_to_anthropic_tool,
 )
 
 

@@ -4,13 +4,14 @@ Tests for discovery module.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from gateway.discovery import (
+    DiscoveryCache,
     build_discovery_payload,
     build_model_entry,
-    DiscoveryCache,
     fetch_live_bridge_models,
 )
 
@@ -33,6 +34,7 @@ class TestBuildDiscoveryPayload:
 
         assert "data" in payload
         assert isinstance(payload["data"], list)
+        # 6 single-provider entries (incl. cerebras) + 2 opencode entries
         assert len(payload["data"]) == 8
 
     def test_cerebras_entries(self):

@@ -6,19 +6,16 @@ Uses shared OpenAI translator for Anthropic↔OpenAI conversion.
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
-import httpx
-
-from gateway.backends.base import BackendBase, SSEEvent
+from gateway.backends.base import BackendBase, BackendHealth, SSEEvent
+from gateway.config import get_config
 from gateway.translators.openai import (
     anthropic_to_openai,
-    openai_sse_to_anthropic,
-    normalize_openai_error,
     build_openai_request,
-    OpenAIStreamBuffer,
+    stream_openai_compatible,
 )
-from gateway.config import get_config
 
 
 class GroqBackend(BackendBase):
@@ -32,87 +29,66 @@ class GroqBackend(BackendBase):
     def model_prefix(self) -> str:
         return "claude-groq-"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("groq")
         self._api_key: str | None = None
         self._base_url: str = "https://api.groq.com/openai/v1"
 
-    def _get_config(self):
+    def _get_config(self) -> None:
         config = get_config()
         self._api_key = config.groq_api_key
 
     async def handle_request(
         self,
         model: str,
-        messages: list[dict],
-        tools: list[dict] | None,
-        headers: dict,
-        cwd: Optional[str] = None,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        cwd: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """Translate Anthropic → OpenAI → Groq, stream back."""
+        """Translate Anthropic -> OpenAI -> Groq, stream back."""
         self._get_config()
 
         if not self._api_key:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "auth_error", "message": "GROQ_API_KEY not configured"}}
+                data={"type": "error", "error": {"type": "auth_error", "message": "GROQ_API_KEY not configured"}},
             )
             return
 
-        # Extract model key and map
         config = get_config()
         model_key = model[len(self.model_prefix):]
         mapped_model = config.groq_model_map.get(model_key, model_key)
 
-        # Translate Anthropic → OpenAI
-        openai_messages, openai_functions = anthropic_to_openai(messages, tools)
-
-        # Build OpenAI request
+        openai_messages, openai_functions = anthropic_to_openai(
+            body.get("messages", []), body.get("tools"), body.get("system")
+        )
         request_body = build_openai_request(
             model=mapped_model,
             messages=openai_messages,
             tools=openai_functions,
             stream=True,
+            temperature=body.get("temperature"),
+            top_p=body.get("top_p"),
+            max_tokens=body.get("max_tokens"),
+            stop=body.get("stop_sequences"),
         )
 
-        # Prepare headers
         upstream_headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
         }
 
-        client = self.get_client()
-        buffer = OpenAIStreamBuffer()
+        async for event in stream_openai_compatible(
+            self.get_client(),
+            f"{self._base_url}/chat/completions",
+            request_body,
+            upstream_headers,
+            provider="Groq",
+        ):
+            yield event
 
-        try:
-            async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                json=request_body,
-                headers=upstream_headers,
-                timeout=httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0),
-            ) as response:
-                if response.status_code >= 400:
-                    yield SSEEvent(event="error", data=normalize_openai_error(response))
-                    return
-
-                # Stream and translate SSE
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    event, buffer = openai_sse_to_anthropic(line, buffer)
-                    if event:
-                        yield event
-
-        except httpx.TimeoutException:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "timeout", "message": "Groq request timed out"}})
-        except httpx.HTTPError as e:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "connection_error", "message": str(e)}})
-
-    async def health_check(self):
-        from gateway.backends.base import BackendHealth
+    async def health_check(self) -> BackendHealth:
         import time
 
         self._get_config()

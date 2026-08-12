@@ -48,12 +48,15 @@ opencode_bridge_model_map:
     large: "mistral/mistral-large-latest"
     small: "mistral/mistral-small-latest"
 
-# Fallback chains per provider group
+# Fallback chains per provider (registered backend provider_names).
+# The primary backend (owner of the model prefix) is implicit; these are the
+# fallbacks tried after it, in order. "opencode" reruns the same provider via
+# its opencode-bridge instance, so the shared model key maps cleanly.
 fallback_chains:
-  groq: ["groq", "openrouter-groq", "opencode-groq"]
-  gemini: ["gemini", "opencode-gemini", "openrouter-gemini"]
-  mistral: ["mistral", "opencode-mistral", "openrouter-mistral"]
-  nim: ["nim", "openrouter-nim"]
-  cerebras: ["cerebras", "openrouter-cerebras"]
-  openrouter: ["openrouter"]
-  opencode: ["opencode"]
+  groq: ["opencode"]
+  gemini: ["opencode"]
+  mistral: ["opencode"]
+  nim: []
+  cerebras: []
+  openrouter: []
+  opencode: []

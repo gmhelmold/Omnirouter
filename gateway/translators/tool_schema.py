@@ -1,17 +1,11 @@
 """
-Shared Tool Schema Translation Module
-
-State-of-the-art tool schema translation between:
-- Anthropic Tools → OpenAI Functions
-- Anthropic Tools → Gemini FunctionDeclarations
-- Reverse mappings for completeness
-
-Handles edge cases: required fields, type mapping, enums, arrays, nested objects.
+Tool-schema translation between Anthropic tools, OpenAI functions and Gemini
+function declarations (plus reverse mappings). Handles required fields, type
+mapping, enums, arrays and nested objects.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -66,7 +60,7 @@ def _convert_schema(anthropic_schema: dict[str, Any], type_map: dict[str, str]) 
         return {"type": "object", "properties": {}}
 
     schema_type = anthropic_schema.get("type", "object")
-    converted = {"type": type_map.get(schema_type, "object")}
+    converted: dict[str, Any] = {"type": type_map.get(schema_type, "object")}
 
     # Handle properties for objects
     if schema_type == "object" and "properties" in anthropic_schema:
@@ -155,8 +149,9 @@ def openai_function_to_anthropic_tool(fn: dict[str, Any]) -> dict[str, Any]:
     description = fn.get("description", "")
     parameters = fn.get("parameters", {})
 
-    # Convert OpenAI types back to Anthropic (lowercase)
-    reverse_map = {v: k for k, v in ANTHROPIC_TO_OPENAI_TYPE.items()}
+    # Convert OpenAI types back to Anthropic (lowercase). Exclude the lossy
+    # "any" alias so that "object" round-trips to "object", not "any".
+    reverse_map = {v: k for k, v in ANTHROPIC_TO_OPENAI_TYPE.items() if k != "any"}
     input_schema = _convert_schema_reverse(parameters, reverse_map)
 
     return {
@@ -172,7 +167,7 @@ def _convert_schema_reverse(schema: dict[str, Any], type_map: dict[str, str]) ->
         return {"type": "object", "properties": {}}
 
     schema_type = schema.get("type", "object")
-    converted = {"type": type_map.get(schema_type, "object")}
+    converted: dict[str, Any] = {"type": type_map.get(schema_type, "object")}
 
     if schema_type == "object" and "properties" in schema:
         converted["properties"] = {

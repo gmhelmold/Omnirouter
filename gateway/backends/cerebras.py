@@ -1,29 +1,26 @@
 """
 Cerebras Translation Backend
 
-Uses shared OpenAI translator for Anthropic↔OpenAI conversion.
+Uses the shared OpenAI translator for Anthropic<->OpenAI conversion.
 Free tier: ~5 RPM, 30K TPM (1M tokens/day), no credit card.
 """
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
-import httpx
-
-from gateway.backends.base import BackendBase, SSEEvent
+from gateway.backends.base import BackendBase, BackendHealth, SSEEvent
+from gateway.config import get_config
 from gateway.translators.openai import (
     anthropic_to_openai,
-    openai_sse_to_anthropic,
-    normalize_openai_error,
     build_openai_request,
-    OpenAIStreamBuffer,
+    stream_openai_compatible,
 )
-from gateway.config import get_config
 
 
 class CerebrasBackend(BackendBase):
-    """Cerebras backend with Anthropic↔OpenAI translation."""
+    """Cerebras backend with Anthropic<->OpenAI translation."""
 
     @property
     def provider_name(self) -> str:
@@ -33,7 +30,7 @@ class CerebrasBackend(BackendBase):
     def model_prefix(self) -> str:
         return "claude-cerebras-"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("cerebras")
         self._api_key: str | None = None
         self._base_url: str = "https://api.cerebras.ai/v1"
@@ -42,23 +39,23 @@ class CerebrasBackend(BackendBase):
         self._rate_limit_last: float = 0.0
         self._rate_limit_current: float = 5.0
 
-    def _get_config(self):
+    def _get_config(self) -> None:
         config = get_config()
         self._api_key = config.cerebras_api_key
         self._rate_limit_tokens = config.cerebras_rpm
         self._rate_limit_refill = config.cerebras_rpm / 60.0
 
-    async def _acquire_rate_limit(self):
+    async def _acquire_rate_limit(self) -> None:
         """Token bucket rate limiting."""
-        import time
         import asyncio
+        import time
 
         now = time.time()
         if self._rate_limit_last > 0:
             elapsed = now - self._rate_limit_last
             self._rate_limit_current = min(
                 self._rate_limit_tokens,
-                self._rate_limit_current + elapsed * self._rate_limit_refill
+                self._rate_limit_current + elapsed * self._rate_limit_refill,
             )
         self._rate_limit_last = now
 
@@ -72,78 +69,54 @@ class CerebrasBackend(BackendBase):
     async def handle_request(
         self,
         model: str,
-        messages: list[dict],
-        tools: list[dict] | None,
-        headers: dict,
-        cwd: Optional[str] = None,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        cwd: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """Translate Anthropic → OpenAI → Cerebras, stream back."""
+        """Translate Anthropic -> OpenAI -> Cerebras, stream back."""
         self._get_config()
 
         if not self._api_key:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "auth_error", "message": "CEREBRAS_API_KEY not configured"}}
+                data={"type": "error", "error": {"type": "auth_error", "message": "CEREBRAS_API_KEY not configured"}},
             )
             return
 
-        # Rate limit
         await self._acquire_rate_limit()
 
-        # Extract model key and map
         config = get_config()
         model_key = model[len(self.model_prefix):]
         mapped_model = config.cerebras_model_map.get(model_key, model_key)
 
-        # Translate Anthropic → OpenAI
-        openai_messages, openai_functions = anthropic_to_openai(messages, tools)
-
-        # Build OpenAI request
+        openai_messages, openai_functions = anthropic_to_openai(
+            body.get("messages", []), body.get("tools"), body.get("system")
+        )
         request_body = build_openai_request(
             model=mapped_model,
             messages=openai_messages,
             tools=openai_functions,
             stream=True,
+            temperature=body.get("temperature"),
+            top_p=body.get("top_p"),
+            max_tokens=body.get("max_tokens"),
+            stop=body.get("stop_sequences"),
         )
 
-        # Prepare headers
-        upstream_headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-        }
+        async for event in stream_openai_compatible(
+            self.get_client(),
+            f"{self._base_url}/chat/completions",
+            request_body,
+            {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+            provider="Cerebras",
+        ):
+            yield event
 
-        client = self.get_client()
-        buffer = OpenAIStreamBuffer()
-
-        try:
-            async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                json=request_body,
-                headers=upstream_headers,
-                timeout=httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0),
-            ) as response:
-                if response.status_code >= 400:
-                    yield SSEEvent(event="error", data=normalize_openai_error(response))
-                    return
-
-                # Stream and translate SSE
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    event, buffer = openai_sse_to_anthropic(line, buffer)
-                    if event:
-                        yield event
-
-        except httpx.TimeoutException:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "timeout", "message": "Cerebras request timed out"}})
-        except httpx.HTTPError as e:
-            yield SSEEvent(event="error", data={"type": "error", "error": {"type": "connection_error", "message": str(e)}})
-
-    async def health_check(self):
-        from gateway.backends.base import BackendHealth
+    async def health_check(self) -> BackendHealth:
         import time
 
         self._get_config()
@@ -151,12 +124,11 @@ class CerebrasBackend(BackendBase):
             return BackendHealth(name=self.name, healthy=False, error="No API key")
 
         start = time.time()
-        client = self.get_client()
         try:
-            response = await client.get(
+            response = await self.get_client().get(
                 f"{self._base_url}/models",
                 headers={"Authorization": f"Bearer {self._api_key}"},
-                timeout=5.0
+                timeout=5.0,
             )
             latency = (time.time() - start) * 1000
             if response.status_code == 200:

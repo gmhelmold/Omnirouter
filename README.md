@@ -154,20 +154,28 @@ cerebras_model_map:
 
 ## Fallback Chains
 
-When the primary backend fails with a **retryable** error (`timeout`, `connection_error`, `api_error`, `rate_limit`, `overloaded`), the router walks the chain. Non-retryable errors stop immediately.
+Configured in `gateway_config.yaml`. Entries are registered backend provider
+names; the primary (owner of the model prefix) is implicit, so each list holds
+only the fallbacks tried **after** it, in order:
 
 ```yaml
 fallback_chains:
-  groq:     ["groq", "openrouter-groq", "opencode-groq"]
-  gemini:   ["gemini", "opencode-gemini", "openrouter-gemini"]
-  mistral:  ["mistral", "opencode-mistral", "openrouter-mistral"]
-  nim:      ["nim", "openrouter-nim"]
-  cerebras: ["cerebras", "openrouter-cerebras"]
-  openrouter: ["openrouter"]
-  opencode:   ["opencode"]
+  groq:     ["opencode"]   # groq direct, then groq via the opencode-bridge
+  gemini:   ["opencode"]
+  mistral:  ["opencode"]
+  nim:      []
+  cerebras: []             # no compatible fallback — runs standalone
+  openrouter: []
+  opencode:   []
 ```
 
-A model's **key** is carried across providers (e.g. `claude-cerebras-gpt-oss` → `claude-groq-gpt-oss`), so fallbacks need the same key present in the target's model map. `MAX_FALLBACK_ATTEMPTS` caps the walk.
+A model's **key** is carried across providers (`claude-groq-llama3` →
+`claude-opencode-groq-llama3`), so a fallback only works when the target exposes
+the same key. Fallback is attempted **only before any content has been streamed**:
+on a retryable failure (`timeout`, `connection_error`, `api_error`, `rate_limit`,
+`overloaded`) the router advances to the next backend; once bytes have reached the
+client, a later failure is surfaced as-is rather than retried on top of a
+half-sent stream. `MAX_FALLBACK_ATTEMPTS` caps the walk.
 
 ## How It Works
 

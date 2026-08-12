@@ -4,20 +4,15 @@ Tests for config module.
 
 from __future__ import annotations
 
-import pytest
-from pathlib import Path
-
-import yaml
-
 from gateway.config import (
+    CerebrasModelMap,
+    FallbackChains,
     GatewayConfig,
     GatewayYamlConfig,
-    OpenRouterModelMap,
-    GroqModelMap,
     GeminiModelMap,
-    CerebrasModelMap,
+    GroqModelMap,
     OpencodeBridgeModelMap,
-    FallbackChains,
+    OpenRouterModelMap,
 )
 
 
@@ -46,10 +41,12 @@ class TestGatewayYamlConfig:
     def test_fallback_chains_default(self):
         config = GatewayYamlConfig()
         chains = config.fallback_chains
-        assert "groq" in chains.groq
-        assert "gemini" in chains.gemini
-        assert "mistral" in chains.mistral
-        assert "cerebras" in chains.cerebras
+        # The primary is implicit; chains list only the fallbacks after it.
+        assert chains.groq == ["opencode"]
+        assert chains.gemini == ["opencode"]
+        assert chains.mistral == ["opencode"]
+        assert chains.cerebras == []
+        assert chains.openrouter == []
 
 
 class TestGatewayConfig:
@@ -78,11 +75,13 @@ openrouter_model_map:
 groq_model_map:
   llama3: "llama-3.3-70b-versatile"
 """
+        import yaml as _yaml
+
         yaml_path = tmp_path / "gateway_config.yaml"
         yaml_path.write_text(yaml_content)
 
-        # Test loading
-        config = GatewayYamlConfig(**yaml.safe_load(yaml_content))
+        data = _yaml.safe_load(yaml_path.read_text())
+        config = GatewayYamlConfig(**data)
         assert config.openrouter_model_map.opus_5 == "anthropic/claude-opus-5"
         assert config.groq_model_map.llama3 == "llama-3.3-70b-versatile"
 

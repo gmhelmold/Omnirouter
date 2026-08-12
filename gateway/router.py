@@ -1,155 +1,179 @@
 """
-Request Router with Fallback Chain Support
+Request router with fallback-chain support.
 
-State-of-the-art router with:
-- Model prefix-based routing
-- Configurable fallback chains per provider
-- Health-aware routing
-- Proper error handling and normalization
+- Model-prefix based routing to the owning backend.
+- Configurable fallback chains per provider (see gateway_config.yaml).
+- Fallback is only attempted before any content has been streamed to the
+  client. Once a backend has emitted a real event, a later upstream failure is
+  surfaced as-is instead of silently retrying on top of a half-sent stream
+  (which would corrupt the response).
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
-from typing import Optional
+from typing import Any
 
 from gateway.backends.base import BackendBase, SSEEvent
-from gateway.backends.openrouter import OpenRouterBackend
-from gateway.backends.groq import GroqBackend
-from gateway.backends.opencode_bridge import OpencodeBridgeBackend
 from gateway.config import get_config
 
 logger = logging.getLogger(__name__)
 
+# Error types that are safe to retry on the next backend in the chain.
+_RETRYABLE_ERRORS = {"timeout", "connection_error", "api_error", "rate_limit", "overloaded"}
+
 
 class ModelRouter:
-    """Routes requests to appropriate backend with fallback support."""
+    """Routes requests to the appropriate backend with fallback support."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._backends: dict[str, BackendBase] = {}
         self._fallback_chains: dict[str, list[str]] = {}
         self._initialized = False
 
-    def initialize(self, backends: list[BackendBase]):
+    def initialize(self, backends: list[BackendBase]) -> None:
         """Register backends and load fallback chains."""
         for backend in backends:
             self._backends[backend.provider_name] = backend
-        config = get_config()
-        self._fallback_chains = config.fallback_chains
+        self._fallback_chains = get_config().fallback_chains
         self._initialized = True
-        logger.info(f"Router initialized with backends: {list(self._backends.keys())}")
+        logger.info("Router initialized with backends: %s", list(self._backends.keys()))
 
-    def get_backend_for_model(self, model: str) -> Optional[BackendBase]:
-        """Find backend that handles this model prefix."""
+    def get_backend_for_model(self, model: str) -> BackendBase | None:
+        """Find the backend that owns this model prefix."""
         for backend in self._backends.values():
             if model.startswith(backend.model_prefix):
                 return backend
         return None
 
     def get_fallback_chain(self, primary_backend: str) -> list[str]:
-        """Get fallback chain for a backend."""
         return self._fallback_chains.get(primary_backend, [])
 
     async def route_with_fallback(
         self,
         model: str,
-        messages: list[dict],
-        tools: list[dict] | None,
-        headers: dict,
-        cwd: Optional[str] = None,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        cwd: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """
-        Route request with fallback chain support.
-
-        Tries primary backend, then falls back through chain on failure.
-        """
+        """Route a request, falling back through the chain on early failure."""
         if not self._initialized:
             raise RuntimeError("Router not initialized")
 
-        primary_backend = self.get_backend_for_model(model)
-        if not primary_backend:
+        primary = self.get_backend_for_model(model)
+        if not primary:
             yield SSEEvent(
                 event="error",
-                data={"type": "error", "error": {"type": "model_not_found", "message": f"No backend for model: {model}"}}
+                data={
+                    "type": "error",
+                    "error": {"type": "model_not_found", "message": f"No backend for model: {model}"},
+                },
             )
             return
 
-        chain = [primary_backend.provider_name] + self.get_fallback_chain(primary_backend.provider_name)
+        # Chain always starts with the primary, then its configured fallbacks.
+        # De-duplicate while preserving order.
+        seen: set[str] = set()
+        chain: list[str] = []
+        for name in [primary.provider_name, *self.get_fallback_chain(primary.provider_name)]:
+            if name not in seen:
+                seen.add(name)
+                chain.append(name)
+
         config = get_config()
         max_attempts = min(config.max_fallback_attempts, len(chain))
-
-        last_error = None
+        last_error: dict[str, Any] | None = None
 
         for attempt_idx, backend_name in enumerate(chain[:max_attempts]):
             backend = self._backends.get(backend_name)
             if not backend:
-                logger.warning(f"Fallback backend not found: {backend_name}")
+                logger.warning("Fallback backend not registered: %s", backend_name)
                 continue
 
-            # For fallback backends, we need to map the model to their prefix
-            fallback_model = self._map_model_for_backend(model, backend)
-            if not fallback_model:
-                logger.warning(f"Cannot map model {model} for fallback backend {backend_name}")
+            target_model = self._map_model_for_backend(model, primary, backend)
+            if not target_model:
+                logger.warning("Cannot map model %s for backend %s", model, backend_name)
                 continue
 
-            logger.info(f"Attempt {attempt_idx + 1}/{max_attempts}: routing to {backend_name} with model {fallback_model}")
+            logger.info(
+                "Attempt %d/%d: routing to %s with model %s",
+                attempt_idx + 1, max_attempts, backend_name, target_model,
+            )
 
+            emitted = False
+            failed = False
             try:
-                async for event in backend.handle_request(
-                    fallback_model, messages, tools, headers, cwd
-                ):
-                    # Check for error events that should trigger fallback
-                    if event.event == "error":
+                async for event in backend.handle_request(target_model, body, headers, cwd):
+                    if event.event == "error" and not emitted:
                         error_data = event.data.get("error", {})
                         error_type = error_data.get("type", "")
-                        # Only fallback on retryable errors
-                        if error_type in ("timeout", "connection_error", "api_error", "rate_limit", "overloaded"):
+                        if error_type in _RETRYABLE_ERRORS:
                             last_error = error_data
-                            logger.warning(f"Backend {backend_name} failed with {error_type}, trying fallback")
+                            failed = True
+                            logger.warning("Backend %s failed with %s, trying next", backend_name, error_type)
                             break
-                        # Non-retryable error - yield and stop
+                        # Non-retryable error before any content: surface and stop.
                         yield event
                         return
+                    emitted = True
                     yield event
-                else:
-                    # Generator completed without break (success)
+            except Exception as exc:
+                last_error = {"type": "exception", "message": str(exc)}
+                logger.exception("Backend %s raised", backend_name)
+                if emitted:
+                    # Mid-stream crash: cannot safely retry, surface it.
+                    yield SSEEvent(
+                        event="error",
+                        data={"type": "error", "error": last_error},
+                    )
                     return
+                failed = True
 
-            except Exception as e:
-                last_error = {"type": "exception", "message": str(e)}
-                logger.exception(f"Backend {backend_name} raised exception")
-                continue
+            if not failed:
+                return  # success
 
-        # All fallbacks exhausted
         yield SSEEvent(
             event="error",
             data={
                 "type": "error",
                 "error": {
                     "type": "all_fallbacks_failed",
-                    "message": f"All {len(chain)} backends failed for model {model}",
-                    "last_error": last_error
-                }
-            }
+                    "message": f"All {len(chain)} backend(s) failed for model {model}",
+                    "last_error": last_error,
+                },
+            },
         )
 
-    def _map_model_for_backend(self, original_model: str, backend: BackendBase) -> Optional[str]:
-        """Map original model ID to backend's expected format."""
-        config = get_config()
+    def _split_model(self, model: str, backend: BackendBase) -> tuple[str, str] | None:
+        """Return (provider, model_key) for a model owned by ``backend``."""
+        if not model.startswith(backend.model_prefix):
+            return None
+        remainder = model[len(backend.model_prefix):]
+        if backend.provider_name == "opencode":
+            # claude-opencode-{provider}-{key}
+            for provider in get_config().opencode_bridge_endpoints:
+                prefix = f"{provider}-"
+                if remainder.startswith(prefix):
+                    return provider, remainder[len(prefix):]
+            return None
+        return backend.provider_name, remainder
 
-        # If same backend, use original
-        if original_model.startswith(backend.model_prefix):
+    def _map_model_for_backend(
+        self, original_model: str, source: BackendBase, target: BackendBase
+    ) -> str | None:
+        """Map a model ID from the source backend into the target's format."""
+        if target is source:
             return original_model
 
-        # Extract the model key from original
-        for backend_name, backend_obj in self._backends.items():
-            if original_model.startswith(backend_obj.model_prefix):
-                model_key = original_model[len(backend_obj.model_prefix):]
-                # Map to target backend's prefix
-                return f"{backend.model_prefix}{model_key}"
+        split = self._split_model(original_model, source)
+        if not split:
+            return None
+        provider, key = split
 
-        return None
+        if target.provider_name == "opencode":
+            return f"claude-opencode-{provider}-{key}"
+        return f"{target.model_prefix}{key}"
 
 
 # Global router instance
