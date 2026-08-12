@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Generate per-engine subagent definitions for Claude Code.
 
+IMPORTANT — API-KEY MODE ONLY. These agent-defs only route to the gateway when
+Claude Code authenticates via ANTHROPIC_API_KEY (no OAuth). Under OAuth login
+(the default for the desktop app / subscription), Claude Code ignores
+ANTHROPIC_BASE_URL and sends subagent inference to managed Anthropic, which
+rejects gateway ids — so spawning these fails. Under OAuth, run free engines via
+`scripts/gw_agent.py` (shell-out) instead; see CLAUDE.md.
+
 Each generated `.claude/agents/<mode>-<key>.md` is a NATIVE Claude Code subagent
-whose frontmatter pins `model:` to a gateway model id. Because it is a native
-agent-def, spawning it (by `subagent_type`) renders in the native agents/tasks
-widget AND routes its inference through the Omnirouter gateway (ANTHROPIC_BASE_URL)
-on the chosen free engine.
+whose frontmatter pins `model:` to a gateway model id. In API-key mode, spawning
+it (by `subagent_type`) renders in the native agents widget AND routes its
+inference through the gateway (ANTHROPIC_BASE_URL) on the chosen free engine.
 
 This exists because the Task/Agent spawn tool's `model` argument only accepts the
 4 built-in aliases (sonnet/opus/haiku/fable) and cannot take a gateway id. Pinning

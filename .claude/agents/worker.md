@@ -1,6 +1,6 @@
 ---
 name: worker
-description: "Generic worker subagent with full tools (read, search, run, edit, write). Runs on the session default engine (CLAUDE_CODE_SUBAGENT_MODEL) through the gateway. To pick a specific free engine per spawn, use a per-engine variant instead — e.g. worker-groq-llama3, worker-gemini-flash-lite, worker-mistral-codestral (code); see MODELS.md and scripts/gen-agent-engines.py. Use for any task."
+description: "Generic worker subagent with full tools (read, search, run, edit, write). Its own inference runs on managed Claude (under OAuth the gateway is not used for inference). To run a task on a FREE gateway engine, have this agent run `scripts/gw_agent.py --mode worker --model <gateway-id> --task ...` via Bash (the codex-style shell-out) and relay the result; see CLAUDE.md. Use for any task."
 model: inherit
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---

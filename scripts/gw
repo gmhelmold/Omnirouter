@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# gw — thin wrapper around scripts/gw_agent.py so gateway spawns are one short line.
+#
+#   scripts/gw <engine-id> <mode> <task...>
+#
+# Examples:
+#   scripts/gw claude-groq-llama3 reader "count the .py files under gateway/"
+#   scripts/gw claude-mistral-codestral worker "add a docstring to gateway/router.py route_with_fallback"
+#
+# Launch it with Bash run_in_background to get a $0 entry in the running-tasks
+# widget; fan out several (one per engine) for brute-force parallelism.
+set -euo pipefail
+ROOT="/Users/gustavoschneiter/Documents/Omnirouter"
+PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY="python3"
+
+if [ "$#" -lt 3 ]; then
+  echo "usage: gw <engine-id> <reader|worker> <task...>" >&2
+  exit 2
+fi
+engine="$1"; mode="$2"; shift 2
+exec "$PY" "$ROOT/scripts/gw_agent.py" --model "$engine" --mode "$mode" --cwd "$ROOT" --task "$*"

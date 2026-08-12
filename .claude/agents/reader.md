@@ -1,6 +1,6 @@
 ---
 name: reader
-description: "Generic read-only subagent (read, search, run — no edit/write). Runs on the session default engine (CLAUDE_CODE_SUBAGENT_MODEL) through the gateway. To pick a specific free engine per spawn, use a per-engine variant instead — e.g. reader-gemini-flash (1M-context reads), reader-groq-llama3 (speed), reader-openrouter-free-nemotron-super (cheap bulk); see MODELS.md and scripts/gen-agent-engines.py. Use for research, analysis, and summarizing without touching files."
+description: "Generic read-only subagent (read, search, run — no edit/write). Its own inference runs on managed Claude (under OAuth the gateway is not used for inference). To do read-only work on a FREE gateway engine, have this agent run `scripts/gw_agent.py --mode reader --model <gateway-id> --task ...` via Bash (the codex-style shell-out); see CLAUDE.md. Use for research, analysis, and summarizing without touching files."
 model: inherit
 tools: Read, Grep, Glob, Bash
 ---

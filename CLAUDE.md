@@ -45,20 +45,41 @@ clear yes. Reference for when to propose one:
 - Reliable tool-use / agentic multi-step loops → `claude-openrouter-deepseek` (cheap).
 - Hardest reasoning, must-be-right refactors/architecture → `claude-openrouter-opus-5`.
 
-## Choosing the engine for a spawn
+## Running work on a free gateway engine
 
-The Task/Agent spawn tool's `model` argument only accepts the four built-in aliases
-(`sonnet`/`opus`/`haiku`/`fable`), and those route to Anthropic — **not** the gateway.
-So you cannot pass a gateway id straight to a spawn. Real ways to put a subagent on a
-specific free gateway engine, in order of use:
+**Hard fact (measured):** under OAuth login — this repo's default — Claude Code sends
+ALL inference (main loop *and* subagents) to Anthropic's managed endpoint and **ignores
+`ANTHROPIC_BASE_URL`**. So a subagent's own model can never be a gateway id: the Task
+tool `model` arg (4 aliases) and agent-def frontmatter `model:` both hit managed
+Anthropic, which rejects gateway ids. `CLAUDE_CODE_SUBAGENT_MODEL` is likewise bypassed.
+This is by design (anthropics/claude-code#48011, closed "not planned"); the gateway is
+used only for the `/model` discovery list.
 
-1. **Per-engine subagent (per-spawn choice, shows in the native agents widget).** Spawn
-   a pinned variant by `subagent_type`: `reader-gemini-flash`, `worker-groq-llama3`,
-   `worker-mistral-codestral`, etc. Each is a native agent-def whose frontmatter pins
-   `model:` to a gateway id, so it runs on that engine through the gateway. Generate/refresh
-   the set with `python scripts/gen-agent-engines.py` (`--all` for every free id). New
-   agent-defs only register on a session restart.
-2. **Session default (all subagents).** Set `CLAUDE_CODE_SUBAGENT_MODEL=claude-groq-llama3`
-   in `.claude/settings.local.json`; plain `worker`/`reader` then run on that engine.
-3. Free engines can return HTTP 429 (rate limit) — the gateway surfaces it as a clean 429;
-   retry shortly or switch to another free engine.
+To actually run a free gateway engine, **don't route inference — shell out** (the
+codex-plugin pattern). Use the engine loop:
+
+```
+python scripts/gw_agent.py --model <gateway-id> --mode worker --task "..." --cwd <dir> [--out FILE]
+# or the wrapper:
+scripts/gw <gateway-id> <reader|worker> "task..."
+```
+
+`gw_agent.py` is a self-contained tool-use loop (read/list/grep/bash, plus write/edit in
+worker mode) that calls the gateway directly — it self-authenticates with the providers'
+keys — with automatic 429 fallback across free engines. Two ways to run it:
+
+- **Background task — $0 Claude, appears in the running-tasks widget.** Launch it with
+  Bash `run_in_background`; the free engine does the work, no Claude tokens are spent.
+  Fan out several (one per engine, distinct `description`) for brute-force parallelism.
+- **Native agent card — thin Claude cost, appears in the agents widget.** Spawn `worker`
+  and have it run the `gw_agent.py` command via Bash and relay the result. The wrapper's
+  own inference is managed Claude (cheap dispatch); the work still runs free.
+
+The native agents widget cannot be driven by a free engine directly, and MCP tools do
+not appear in it — those are hard app limits, not fixable here.
+
+**Only in API-key auth mode** (`ANTHROPIC_API_KEY=x ANTHROPIC_BASE_URL=<gateway> claude`,
+no OAuth) does inference honor the gateway. There, per-engine agent-defs work natively:
+generate them with `python scripts/gen-agent-engines.py` and spawn `worker-groq-llama3`
+etc. — native card + free engine + $0 Claude. That trades the whole session off the
+Claude subscription, so it is opt-in, not the default.
