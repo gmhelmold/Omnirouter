@@ -31,8 +31,9 @@ Other free ids — Groq: `claude-groq-gpt-oss-120b`, `-gpt-oss-20b`, `-qwen3`, `
 `-medium`, `-devstral`, `-magistral`, `-ministral-8b`, `-code`. OpenRouter free:
 `claude-openrouter-free-nemotron-ultra`, `-nemotron-nano`, `-nemotron-lightning`, `-nemotron-9b`,
 `-gemma`, `-gemma-26b`, `-gpt-oss`, `-north-code`, `-ling-tiny`, `-lfm`, `-laguna-s`.
-The `claude-opencode-*` ids are opencode's own hosted models (e.g. `big-pickle`,
-`deepseek-v4-flash`, `nemotron-ultra`), served by a local `opencode serve` and text-only.
+The `claude-opencode-*` ids are opencode's own hosted "OpenCode Zen" models (e.g.
+`big-pickle`, `deepseek-v4-flash`, `nemotron-ultra`) — free, OpenAI-compatible, and
+tool-capable (shared public key, so occasional rate limits).
 (`mixtral`/`gemma` on Groq and Gemini 1.5 were retired — no longer in the menu.)
 
 ### Paid engines — only after explicit user authorization

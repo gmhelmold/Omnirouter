@@ -31,10 +31,10 @@ class TestGatewayYamlConfig:
         assert config.cerebras_model_map.gpt_oss == "gpt-oss-120b"
         assert config.cerebras_model_map.glm == "zai-glm-4.7"
 
-    def test_opencode_serve_defaults(self):
+    def test_opencode_base_url_default(self):
         config = GatewayYamlConfig()
-        assert config.opencode_serve_url.startswith("http")
-        assert config.opencode_agent == "general"
+        assert config.opencode_base_url.startswith("http")
+        assert "zen" in config.opencode_base_url
 
     def test_fallback_chains_default(self):
         config = GatewayYamlConfig()

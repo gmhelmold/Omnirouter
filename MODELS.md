@@ -106,16 +106,17 @@ Slugs unverified while the key is unset (`.env` has `CEREBRAS_API_KEY=` empty).
 
 `claude-nim-llama3` (Llama 3.1 70B) · `claude-nim-nemotron` (Nemotron Ultra) · `claude-nim-mixtral` (Mixtral 8x7B).
 
-### opencode — opencode's own hosted models (all free)
+### opencode — OpenCode Zen hosted models (all free)
 
-Backed by a local `opencode serve` instance (session API), bridged to Anthropic
-by the gateway. Start it with `./scripts/opencode-serve.sh` (default
-`http://127.0.0.1:5051`; set `opencode_serve_url` in `gateway_config.yaml`). Ids
-are flat `claude-opencode-<key>`. **Text-only** for now — tool-use is not bridged
-through opencode's agentic loop. Discovery auto-merges any extra models the live
-`opencode serve` reports.
+opencode's own hosted models, served OpenAI-compatibly at
+`https://opencode.ai/zen/v1` (`opencode_base_url`). The gateway calls the
+endpoint **directly** — not through `opencode serve`'s agent loop — so these
+behave like any other model: streaming and **tool-use work** (the OpenAI
+translator forwards Claude Code's tool schemas and maps `tool_calls` back to
+`tool_use`). No local process required. Ids are flat `claude-opencode-<key>`;
+discovery auto-merges any extra models Zen's `/models` reports.
 
-| Engine id | opencode modelID |
+| Engine id | Zen modelID |
 |---|---|
 | `claude-opencode-big-pickle` | big-pickle |
 | `claude-opencode-deepseek-v4-flash` | deepseek-v4-flash-free |
@@ -126,9 +127,9 @@ through opencode's agentic loop. Discovery auto-merges any extra models the live
 | `claude-opencode-nemotron-lightning` | nemotron-3.5-lightning-free |
 | `claude-opencode-nemotron-ultra` | nemotron-3-ultra-free |
 
-The gateway creates a throwaway session per request, flattens the conversation
-into one prompt, and deletes the session after. If `opencode serve` is down the
-backend returns a clear `connection_error`.
+Free models use a shared **public** key with a shared rate limit — expect
+occasional `FreeUsageLimitError` (surfaced cleanly). Set `OPENCODE_API_KEY` in
+`.env` for a personal key with higher limits.
 
 ## Routing heuristics
 

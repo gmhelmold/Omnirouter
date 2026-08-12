@@ -1,7 +1,7 @@
-# opencode is a standalone provider backed by a local `opencode serve`
-# instance (session API). Start it with ./scripts/opencode-serve.sh.
-opencode_serve_url: "http://127.0.0.1:5051"
-opencode_agent: "general"
+# opencode's own hosted models ("OpenCode Zen"), served OpenAI-compatibly.
+# Called directly (no `opencode serve` needed) so tool-use works. Free models
+# use the shared public key; set OPENCODE_API_KEY in .env for higher limits.
+opencode_base_url: "https://opencode.ai/zen/v1"
 
 # Model maps (keys = suffix after the `claude-<provider>-` prefix).
 # Slugs verified live against each provider's /models on 2026-08-12.
