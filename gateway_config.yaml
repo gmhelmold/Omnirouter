@@ -26,7 +26,6 @@ openrouter_model_map:
   free-gpt-oss: "openai/gpt-oss-20b:free"
   free-north-code: "cohere/north-mini-code:free"
   free-ling-tiny: "inclusionai/ling-3.0-tiny:free"
-  free-lfm: "liquid/lfm-2.5-2.6b:free"
   free-laguna-s: "poolside/laguna-s-2.1:free"
   free-laguna-xs: "poolside/laguna-xs-2.1:free"
 

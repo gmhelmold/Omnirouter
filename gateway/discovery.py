@@ -94,9 +94,12 @@ async def fetch_live_bridge_models(config: GatewayConfig) -> list[dict[str, Any]
     Fetch live models from the OpenCode Zen endpoint (OpenAI-style ``/models``)
     so the menu reflects whatever Zen currently offers.
 
-    Each Zen modelID is exposed as ``claude-opencode-<modelID>``. Returns entries
-    to merge with the static config; silently empty if Zen is unreachable (the
-    static map is used instead).
+    Only FREE Zen models are surfaced (ids ending in ``-free``): the OpenAI-style
+    catalog also lists paid models (gpt-5.x, claude-*, grok, glm-*) that must not
+    be advertised as free and that the shared public key cannot use anyway. The
+    curated free models without a ``-free`` suffix (e.g. big-pickle) already come
+    from the static map. Each modelID is exposed as ``claude-opencode-<modelID>``;
+    silently empty if Zen is unreachable (static map is used instead).
     """
     live_entries: list[dict[str, Any]] = []
     base = config.opencode_base_url.rstrip("/")
@@ -125,6 +128,9 @@ async def fetch_live_bridge_models(config: GatewayConfig) -> list[dict[str, Any]
     for model in models:
         model_id = model.get("id") if isinstance(model, dict) else None
         if not model_id or model_id in known:
+            continue
+        # Free-tier only: paid Zen models must not be tagged FREE.
+        if not str(model_id).endswith("-free"):
             continue
         gw_id = f"claude-opencode-{model_id}"
         if "claude" in gw_id.lower() or "anthropic" in gw_id.lower():
