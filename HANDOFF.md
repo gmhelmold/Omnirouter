@@ -8,7 +8,7 @@
 - **Repo**: `/Users/gustavoschneiter/Documents/Omnirouter` (standalone git, branch `master`, working tree clean).
 - **Product**: `claude-gateway` v0.1.0 — a local, Anthropic-compatible gateway so Claude Code's `/model` picker can use **8 providers** (Anthropic, OpenRouter, Groq, Gemini, Mistral, Cerebras, NIM, OpenCode Zen).
 - **Environment**: `.venv` (Python 3.14), `pip install -e ".[dev]"` already run.
-- **Tests**: **77 passing**, no known failures.
+- **Tests**: **79 passing**, no known failures.
 - **Keys**: `OPENROUTER_API_KEY` and `OPENCODE_API_KEY` are set in the (gitignored) `.env`; Groq/Gemini/Mistral keys were already present. Cerebras and NIM are **unset** — those providers stay inert until configured.
 
 ## 2. What the last session shipped
@@ -21,13 +21,47 @@
 6. **Menu refresh.** Retired dead ids (Groq `mixtral`/`gemma`, Gemini 1.5 & 2.5, OpenRouter `free-lfm`); added current Groq/Gemini/Mistral/OpenRouter-free models, verified live.
 7. **Docs.** Rewrote `README.md`, `OWNERSHIP.md` (code map, invariants §5.7–5.10, decision log §11), `CLAUDE.md`, `.env.example`, and added `docs/omnirouter.html` (a self-contained, Linear-styled onboarding + feature manual with an embedded Inter font, ⌘K palette, provider modals, and a dark/light toggle).
 
+## 2b. This session (subagent engines on free models + gateway fixes)
+
+**Gateway/menu fixes (committed):**
+- **Error status mapping.** Non-streaming errors were hardcoded to HTTP 502; now
+  mapped by type (`rate_limit`→429, auth→401, …) via `_http_status_for_error` +
+  tests. Free-tier 429s now read as 429, not a fake gateway crash.
+- **respx** added to dev deps — `test_opencode_backend.py` imported it undeclared,
+  so the suite failed to collect (75 + error). Now **79 passing**.
+- **Gemini menu honesty.** Removed `claude-gemini-pro` / `-3.1-pro`: Google gives
+  them a free-tier quota of `limit: 0` (never work free, were falsely tagged FREE).
+  Dropped the `pro` default from `GeminiModelMap` + YAML. Discovery = **58 models**.
+- **Model logging.** `POST /v1/messages` logs `incoming request model=…` for routing
+  visibility. Discovery caches to `~/.claude/cache/gateway-models.json` (TTL 300s) —
+  config changes need a restart **and** a cache bust to show.
+
+**The subagent-engine reality (the big finding — don't reopen it):**
+- Under **OAuth login** (Claude Pro/Max subscription — the default here), Claude Code
+  sends ALL inference (main loop AND subagents) to managed Anthropic and **ignores
+  `ANTHROPIC_BASE_URL`**. Measured, and confirmed by anthropics/claude-code#48011 /
+  #38698 / #52572 (all "not planned"). So a subagent can NEVER run on a gateway id:
+  the Task-tool `model` arg (4 aliases) and agent-def frontmatter `model:` both hit
+  Anthropic, which rejects gateway ids. Third-Party Inference mode routes to a gateway
+  but **replaces the subscription** (API-key only) — you cannot have both.
+- **Therefore, the compliant way to run free engines while keeping the subscription is
+  to shell out**, not to route inference. `scripts/gw_agent.py` is a self-contained
+  tool-use loop that calls the gateway directly (provider keys), with internal 429
+  fallback. `scripts/gw "task"` is the one-line wrapper; launch it as a **background
+  Bash task** ($0 subscription quota). A native agent-widget *card* is NOT free — only
+  a `worker` + `model: haiku` shell-out gets one, at ~5–6k Haiku tokens/spawn (measured);
+  use that only for the rare spawn where the card matters, never for fan-out.
+- Full policy + usage in `CLAUDE.md` ("Running work on a free gateway engine"). The
+  `scripts/gen-agent-engines.py` per-engine agent-defs only route in API-key mode.
+
 ## 3. Prove it works
 
 ```bash
 cd /Users/gustavoschneiter/Documents/Omnirouter
 source .venv/bin/activate
 
-python -m pytest tests/ -q        # expect: 77 passed
+python -m pytest tests/ -q        # expect: 79 passed
+scripts/gw "count the .py files under gateway/"   # free-engine spawn ($0), runs on the gateway
 
 # boot + discovery + a live call
 ./scripts/ensure-gateway.sh
