@@ -200,3 +200,43 @@ class TestBuildOpenAIRequest:
         assert req["top_p"] == 0.9
         assert req["max_tokens"] == 100
         assert req["stop"] == ["x"]
+
+
+def _feed_all(lines):
+    from gateway.translators.openai import OpenAITranslator
+    t = OpenAITranslator()
+    evs = []
+    for ln in lines:
+        evs.extend(t.feed(ln))
+    return evs
+
+def _text(evs):
+    return "".join(e.data["delta"]["text"] for e in evs
+                    if e.event == "content_block_delta"
+                    and e.data.get("delta", {}).get("type") == "text_delta")
+
+def test_strips_think_block_single_chunk():
+    import json
+    lines = ['data: {"choices":[{"delta":{"content":"<think>reasoning here</think>Hello"}}]}',
+             'data: [DONE]']
+    assert _text(_feed_all(lines)) == "Hello"
+
+def test_strips_think_split_across_chunks():
+    lines = [
+        'data: {"choices":[{"delta":{"content":"<thi"}}]}',
+        'data: {"choices":[{"delta":{"content":"nk>secret rea"}}]}',
+        'data: {"choices":[{"delta":{"content":"soning</thi"}}]}',
+        'data: {"choices":[{"delta":{"content":"nk>Answer"}}]}',
+        'data: [DONE]',
+    ]
+    assert _text(_feed_all(lines)) == "Answer"
+
+def test_plain_text_with_lt_not_dropped():
+    lines = ['data: {"choices":[{"delta":{"content":"a < b and c > d"}}]}',
+             'data: [DONE]']
+    assert _text(_feed_all(lines)) == "a < b and c > d"
+
+def test_unterminated_think_dropped():
+    lines = ['data: {"choices":[{"delta":{"content":"<think>never closes"}}]}',
+             'data: [DONE]']
+    assert _text(_feed_all(lines)) == ""
