@@ -18,6 +18,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
 
+from gateway.backends.anthropic import AnthropicBackend
 from gateway.backends.base import BackendBase
 from gateway.backends.cerebras import CerebrasBackend
 from gateway.backends.gemini import GeminiBackend
@@ -61,6 +62,9 @@ def _build_backends() -> list[BackendBase]:
         MistralBackend(),
         CerebrasBackend(),
         OpencodeBridgeBackend(),
+        # Catch-all LAST: native Anthropic models (claude-opus-*, claude-sonnet-*, ...)
+        # pass through to api.anthropic.com using the client's own credential.
+        AnthropicBackend(),
     ]
 
 

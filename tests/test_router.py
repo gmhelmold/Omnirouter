@@ -129,6 +129,24 @@ async def test_unknown_model():
 
 
 @pytest.mark.asyncio
+async def test_anthropic_catchall_only_claims_unmatched_native_models():
+    """The 'claude-' catch-all (registered last) must not steal provider models."""
+    groq = StubBackend("groq", "claude-groq-", _ok)
+    anthropic = StubBackend("anthropic", "claude-", _ok)  # catch-all, last
+    router = ModelRouter()
+    router.initialize([groq, anthropic])
+
+    # Provider model → groq, not the catch-all.
+    await _collect(router.route_with_fallback("claude-groq-llama3", {}, {}))
+    assert groq.received_model == "claude-groq-llama3"
+    assert anthropic.received_model is None
+
+    # Native model → catch-all, forwarded verbatim (no key stripped).
+    await _collect(router.route_with_fallback("claude-opus-4-20250514", {}, {}))
+    assert anthropic.received_model == "claude-opus-4-20250514"
+
+
+@pytest.mark.asyncio
 async def test_all_fallbacks_failed():
     primary = StubBackend("groq", "claude-groq-", _retryable_error)
     fb = StubBackend("opencode", "claude-opencode-", _retryable_error)
