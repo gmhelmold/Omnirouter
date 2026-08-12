@@ -1,0 +1,42 @@
+{
+  "file_count": 99,
+  "migrations": [
+    "0001_initial.py",
+    "0002_baseline_schema.py",
+    "soft_delete_items.py"
+  ],
+  "models": [
+    "Base",
+    "Item",
+    "User"
+  ],
+  "python_file_count": 76,
+  "routes": [
+    "DELETE:/me",
+    "DELETE:/{id}",
+    "DELETE:/{id}/permanent",
+    "DELETE:/{user_id}",
+    "GET:/",
+    "GET:/admin-only",
+    "GET:/deleted/",
+    "GET:/healthz",
+    "GET:/me",
+    "GET:/readyz",
+    "GET:/startupz",
+    "GET:/user-area",
+    "GET:/{id}",
+    "GET:/{user_id}",
+    "PATCH:/me",
+    "PATCH:/me/password",
+    "PATCH:/{id}",
+    "PATCH:/{user_id}",
+    "POST:/",
+    "POST:/login/access-token",
+    "POST:/login/test-token",
+    "POST:/password-recovery/{email}",
+    "POST:/reset-password",
+    "POST:/signup",
+    "POST:/{id}/restore"
+  ],
+  "total_loc": 5561
+}

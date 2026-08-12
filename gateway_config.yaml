@@ -1,0 +1,54 @@
+# Provider endpoints for opencode-bridge (one per provider)
+opencode_bridge_endpoints:
+  groq: "http://localhost:5001"
+  gemini: "http://localhost:5002"
+  mistral: "http://localhost:5003"
+
+# Model maps (keys = suffix after provider prefix)
+openrouter_model_map:
+  opus-5: "anthropic/claude-opus-5"
+  sonnet-5: "anthropic/claude-sonnet-5"
+  haiku-5: "anthropic/claude-3.5-haiku"
+  deepseek: "deepseek/deepseek-chat"
+  qwen-coder: "qwen/qwen-2.5-coder-32b-instruct"
+  glm-5: "z-ai/glm-5.2"
+
+groq_model_map:
+  llama3: "llama-3.3-70b-versatile"
+  mixtral: "mixtral-8x7b-32768"
+  gemma: "gemma2-9b-it"
+
+gemini_model_map:
+  flash: "gemini-1.5-flash"
+  pro: "gemini-1.5-pro"
+  flash-8b: "gemini-1.5-flash-8b"
+
+nim_model_map:
+  llama3: "meta/llama-3.1-70b-instruct"
+  nemotron: "nvidia/nemotron-3-ultra"
+  mixtral: "mistralai/mixtral-8x7b-instruct-v0.1"
+
+mistral_model_map:
+  large: "mistral-large-latest"
+  small: "mistral-small-latest"
+  codestral: "codestral-latest"
+
+opencode_bridge_model_map:
+  groq:
+    llama3: "groq/llama-3.3-70b-versatile"
+    mixtral: "groq/mixtral-8x7b-32768"
+  gemini:
+    flash: "gemini/gemini-1.5-flash"
+    pro: "gemini/gemini-1.5-pro"
+  mistral:
+    large: "mistral/mistral-large-latest"
+    small: "mistral/mistral-small-latest"
+
+# Fallback chains per provider group
+fallback_chains:
+  groq: ["groq", "openrouter-groq", "opencode-groq"]
+  gemini: ["gemini", "opencode-gemini", "openrouter-gemini"]
+  mistral: ["mistral", "opencode-mistral", "openrouter-mistral"]
+  nim: ["nim", "openrouter-nim"]
+  openrouter: ["openrouter"]
+  opencode: ["opencode"]
