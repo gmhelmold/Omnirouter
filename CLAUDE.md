@@ -34,7 +34,13 @@ Other free ids — Groq: `claude-groq-gpt-oss-120b`, `-gpt-oss-20b`, `-qwen3`, `
 The `claude-opencode-*` ids are opencode's own hosted "OpenCode Zen" models (e.g.
 `big-pickle`, `deepseek-v4-flash`, `nemotron-ultra`) — free, OpenAI-compatible, and
 tool-capable (shared public key, so occasional rate limits).
-(`mixtral`/`gemma` on Groq and Gemini 1.5 were retired — no longer in the menu.)
+(`mixtral`/`gemma` on Groq and Gemini 1.5/2.5 were retired — no longer in the menu.)
+
+**Tip — reasoning models need token headroom.** Groq `gpt-oss`/`qwen3`, the Gemini
+2.5/3.x line, and the OpenCode Zen models spend a hidden thinking budget before the
+visible answer. `max_tokens` caps the *total*, so a tiny value can yield an empty reply
+(`stop_reason: max_tokens`). Give reasoning spawns a generous `max_tokens`. The gateway
+imposes no limit of its own — it forwards whatever the client sends.
 
 ### Paid engines — only after explicit user authorization
 

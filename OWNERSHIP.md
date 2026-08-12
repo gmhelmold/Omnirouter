@@ -52,23 +52,24 @@ If a file or concern is not listed above, the **tech lead is the default owner**
 
 ```
 gateway/
-├── main.py                  # API owner   — app wiring, endpoints, lifespan
+├── main.py                  # API owner   — app wiring, endpoints, lifespan, streaming keepalive ping
 ├── config.py                # Config owner — settings schema (env + YAML)
 ├── router.py                # Router owner — ModelRouter, fallback execution
-├── discovery.py             # API owner   — /v1/models payload, cache, live bridge fetch
+├── discovery.py             # API owner   — /v1/models payload, cache, live Zen free-model merge
 ├── health.py                # API owner   — aggregate health model
 ├── backends/
 │   ├── base.py              # Backend owner — BackendBase contract, SSEEvent
-│   ├── openrouter.py        # Backend owner — raw Anthropic pass-through
-│   ├── groq.py              # Backend owner — OpenAI-compat, rate-limited
+│   ├── anthropic.py         # Backend owner — native Anthropic passthrough
+│   ├── openrouter.py        # Backend owner — raw Anthropic pass-through (raw SSE relay)
+│   ├── groq.py              # Backend owner — OpenAI-compat
 │   ├── gemini.py            # Backend owner — Gemini API
 │   ├── nim.py               # Backend owner — OpenAI-compat (NVIDIA)
-│   ├── mistral.py           # Backend owner — OpenAI-compat, rate-limited
+│   ├── mistral.py           # Backend owner — OpenAI-compat
 │   ├── cerebras.py          # Backend owner — OpenAI-compat, 5 RPM token bucket
-│   └── opencode_bridge.py   # Backend owner — per-provider bridge instances
+│   └── opencode_bridge.py   # Backend owner — OpenCode Zen (direct OpenAI-compat, tool-capable)
 ├── translators/
 │   ├── tool_schema.py       # Translator owner — Anthropic↔OpenAI schema
-│   ├── openai.py            # Translator owner — request build, SSE stream
+│   ├── openai.py            # Translator owner — request build, SSE stream, raw-event fold, <think> strip
 │   └── gemini.py            # Translator owner — request build, SSE stream
 tests/                       # QA owner   — must stay green per §6
 gateway_config.yaml          # Config owner — model maps + fallback chains
@@ -84,7 +85,11 @@ These are load-bearing. A change that violates one **requires the architect's si
 3. **Fallback mapping**: `_map_model_for_backend` carries the model *key* across providers; it must never invent a key that a provider's model map doesn't define.
 4. **Serialization**: SSE `data:` lines and JSON responses are orjson-encoded. A plain `dict` passed to `Response(content=...)` is a latent `TypeError`. (Fixed 2026-08 in `main.py`.)
 5. **`/health` state**: backends live on `app.state.backends`. Access via the `app` closure — `globals().get("app")` is dead code (fixed 2026-08).
-6. **API keys**: never committed. `.env` is gitignored; `.env.example` carries placeholders only.
+6. **API keys**: never committed. `.env` is gitignored; `.env.example` carries placeholders only. No real key may appear in any tracked file or commit — verified across full history.
+7. **Non-streaming reconstruction**: `collect_message` must fold **both** normalized events and OpenRouter's `raw` (Anthropic) SSE lines; the raw branch is load-bearing (without it, every `claude-openrouter-*` returns empty in `stream:false`).
+8. **Streaming keepalive**: the keepalive wrapper emits `ping` on silence but must **never cancel** the in-flight upstream — await the same pending event across pings (no `asyncio.wait_for` on the generator step).
+9. **Free-only discovery**: only free models may be tagged `FREE 🆓`. The OpenCode Zen live merge is restricted to `-free` ids so paid Zen models are never advertised as free.
+10. **Reasoning isolation**: inline `<think>…</think>` is stripped from visible content; a partial tag split across chunks must not corrupt or drop ordinary text.
 
 ## 6. Quality Gate
 
@@ -104,13 +109,15 @@ Rules:
 
 | # | Area | Issue | Status |
 |---|---|---|---|
-| K1 | tests | `test_tool_result_conversion` fails (expects 4 msgs, gets 3) | Pre-existing, unfixed |
-| K2 | tests | `test_openai_to_anthropic` reverse mapping (`object` vs `any`) | Pre-existing, unfixed |
-| K3 | lint/mypy | Baseline non-compliant (mypy: 120 errors / 14 files) | Debt, regression-gated |
-| K4 | config | `gateway/config.py` unused imports (`os`, `Any`, `field_validator`, `model_validator`) | Debt |
-| K5 | CI | No CI pipeline yet — `ci.sh` lives upstream in skill-001 | Planned |
+| K1 | tests | `test_tool_result_conversion` | ✅ Resolved — passes in the current suite |
+| K2 | tests | `test_openai_to_anthropic` reverse mapping | ✅ Resolved — passes in the current suite |
+| K3 | lint/mypy | Baseline non-compliant (mypy) | Debt, regression-gated |
+| K4 | config | `gateway/config.py` unused imports | Debt |
+| K5 | CI | No CI pipeline yet | Planned |
+| K6 | providers | Free-tier rate limits (OpenRouter `free-*`, OpenCode Zen, Gemini quota) return `429` intermittently | External; surfaced cleanly, lifted by a personal key |
+| K7 | providers | Cerebras / NIM inert until keys/URL configured | External config |
 
-New findings go here with a number. Assign the highest free `K#`.
+Full test suite: **77 passing**. New findings go here with the highest free `K#`.
 
 ## 8. Change Management
 
@@ -135,3 +142,24 @@ New findings go here with a number. Assign the highest free `K#`.
 | Omnirouter | Shipped plugin | Owns its own git history; upstream drift is reconciled per-feature, not wholesale |
 
 > Last sync: **2026-08-12** — ported Cerebras backend + 3 `main.py` serialization/state fixes from skill-001.
+
+## 11. Decision Log (recent)
+
+Newest first. Architecture decisions that would otherwise be non-obvious.
+
+- **2026-08-12 — Streaming keepalive.** Emit an Anthropic `ping` every
+  `KEEPALIVE_INTERVAL` (default 15s, was an unused 30s) of upstream silence so
+  slow reasoning models aren't treated as dead. Never cancels the request. (§5.8)
+- **2026-08-12 — Strip inline `<think>`.** Qwen3-via-Groq (and similar) leaked
+  literal reasoning into visible text; the OpenAI translator now filters it. (§5.10)
+- **2026-08-12 — OpenRouter non-streaming fix.** `collect_message` now folds
+  OpenRouter's `raw` Anthropic SSE lines; previously every `claude-openrouter-*`
+  returned empty in `stream:false`. (§5.7)
+- **2026-08-12 — OpenCode Zen, direct.** Replaced the never-working per-provider
+  opencode-bridge (session API, text-only) with a direct OpenAI-compatible call
+  to OpenCode Zen (`opencode_base_url`), which is tool-capable. Flat ids
+  `claude-opencode-<key>`; discovery merges only free (`-free`) Zen models so
+  paid ones are never tagged free. (§5.9)
+- **2026-08-12 — Menu refresh.** Retired dead ids (Groq mixtral/gemma, Gemini
+  1.5 and 2.5, OpenRouter `free-lfm`); added current Groq/Gemini/Mistral/
+  OpenRouter-free models, verified live.

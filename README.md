@@ -1,18 +1,28 @@
 # Omnirouter — Claude Code Gateway
 
-> **Multi-provider gateway for the Claude Code native model picker.** Zero friction. Zero overhead. Seven independent providers behind one Anthropic-compatible endpoint.
+> **Multi-provider gateway for the Claude Code native model picker.** One
+> Anthropic-compatible endpoint in front of many providers — free and paid —
+> with streaming, tool-use, and reasoning handled uniformly.
 
-Omnirouter lets Claude Code's `/model` picker and subagent `model:` frontmatter spawn models from **7 independent providers** as if they were native — same Anthropic Messages API, same SSE streaming, same tool-calling flow, with automatic fallback chains.
+Omnirouter lets Claude Code's `/model` picker and subagent `model:` frontmatter
+spawn models from many providers as if they were native Anthropic models: same
+Messages API, same SSE streaming, same tool-calling flow. Point
+`ANTHROPIC_BASE_URL` at the gateway and every backend answers through one
+consistent interface.
 
 ## Table of Contents
 
 - [Why](#why)
 - [Providers](#providers)
+- [Model menu](#model-menu)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Fallback Chains](#fallback-chains)
 - [How It Works](#how-it-works)
+- [Streaming keepalive](#streaming-keepalive)
+- [Reasoning handling](#reasoning-handling)
+- [Fallback chains](#fallback-chains)
 - [API](#api)
+- [Security: keys never leave your machine](#security-keys-never-leave-your-machine)
 - [Development](#development)
 - [Limitations](#limitations)
 - [Ownership & Maintenance](#ownership--maintenance)
@@ -20,39 +30,41 @@ Omnirouter lets Claude Code's `/model` picker and subagent `model:` frontmatter 
 
 ## Why
 
-Claude Code natively routes through Anthropic. Omnirouter replaces that one hop with a local gateway that translates the Anthropic protocol into whatever your provider speaks — so **free-tier and multi-provider capacity become first-class**, and you keep one consistent interface (`ANTHROPIC_BASE_URL`) regardless of which model answers.
+Claude Code natively routes through Anthropic. Omnirouter replaces that one hop
+with a local gateway that translates the Anthropic protocol into whatever each
+provider speaks — so **free-tier and multi-provider capacity become first-class**
+and you keep one interface regardless of which model answers.
 
 ## Providers
 
-| Provider | Protocol | Translation | Rate limit | Model ID prefix |
-|---|---|---|---|---|
-| **OpenRouter** | Anthropic | Zero (pass-through) | Provider-defined | `claude-` (native) |
-| **Groq** | OpenAI | Thin (Anthropic↔OpenAI) | Provider free tier | `claude-groq-` |
-| **Google Gemini** | Gemini API | Thin (Anthropic↔Gemini) | 15 RPM (local) | `claude-gemini-` |
-| **NVIDIA NIM** | OpenAI | Thin (Anthropic↔OpenAI) | Self-host / cloud | `claude-nim-` |
-| **Mistral** | OpenAI | Thin (Anthropic↔OpenAI) | 500 RPM (local) | `claude-mistral-` |
-| **Cerebras** | OpenAI | Thin (Anthropic↔OpenAI) | 5 RPM (local token bucket) | `claude-cerebras-` |
-| **opencode-bridge** | OpenAI | Thin (Anthropic↔OpenAI) | Uses opencode `auth.json` | `claude-opencode-` |
+| Provider | Upstream protocol | Model ID prefix | Notes |
+|---|---|---|---|
+| **Anthropic** | Anthropic (native) | `claude-*` (native ids) | Direct passthrough (e.g. a Max subscription) |
+| **OpenRouter** | Anthropic skin | `claude-openrouter-` | Byte-for-byte passthrough; free + paid slugs |
+| **Groq** | OpenAI | `claude-groq-` | Very low latency, free tier |
+| **Google Gemini** | Gemini API | `claude-gemini-` | Huge context, 15 RPM (local cap) |
+| **Mistral** | OpenAI | `claude-mistral-` | Broad free lineup |
+| **Cerebras** | OpenAI | `claude-cerebras-` | Fastest tokens/sec; needs key |
+| **NVIDIA NIM** | OpenAI | `claude-nim-` | Self-host / cloud; needs config |
+| **OpenCode Zen** | OpenAI-compatible | `claude-opencode-` | opencode's own hosted free models; **tool-capable**, no local process |
 
-> Local RPM values are **enforced client-side** token buckets so a gateway can safely drive aggressive free tiers (Gemini, Mistral, Cerebras) without tripping upstream limits.
+> Free-tier providers and any OpenRouter `:free`/`free-*` slug are auto-tagged
+> **`FREE 🆓`** in discovery. `GET /v1/models?free=1` returns only the free ones.
 
-### Default model maps (`gateway_config.yaml`)
+## Model menu
 
-| Group | Models |
-|---|---|
-| OpenRouter (paid) | `opus-5`, `opus-4.8`, `sonnet-5`, `haiku-4.5`, `deepseek`, `qwen-coder` |
-| OpenRouter (**free** 🆓) | `free-nemotron-ultra`, `free-nemotron-super`, `free-gemma`, `free-gpt-oss`, `free-north-code` |
-| Groq | `llama3`, `mixtral`, `gemma` |
-| Gemini | `flash`, `pro`, `flash-8b` |
-| NIM | `llama3`, `nemotron`, `mixtral` |
-| Mistral | `large`, `small`, `codestral` |
-| Cerebras | `gpt-oss` (→ `gpt-oss-120b`), `glm` (→ `zai-glm-4.7`) |
-| opencode-bridge | `groq`, `gemini`, `mistral` groups |
+The full, current menu lives in [MODELS.md](MODELS.md) and is generated from
+`gateway_config.yaml`. Highlights (all free unless noted):
 
-> The free OpenRouter models are keyed `free-*` and any slug ending in `:free`
-> is auto-tagged **`OpenRouter · FREE 🆓`** in the `/model` picker, so zero-cost
-> options are obvious at a glance. Edit the `openrouter_model_map` in
-> `gateway_config.yaml` to add or swap slugs (see https://openrouter.ai/models).
+- **Groq** — `llama3`, `llama-8b`, `gpt-oss-120b`, `gpt-oss-20b`, `qwen3`, `compound`, `compound-mini`
+- **Gemini** — `flash`, `pro`, `flash-lite`, `3-flash`, `3.1-pro`, `3.5-flash`, `3.6-flash`, `gemma-31b`, `gemma-26b`
+- **Mistral** — `large`, `medium`, `small`, `codestral`, `devstral`, `devstral-medium`, `magistral`, `ministral-14b/8b/3b`, `code`
+- **OpenCode Zen** — `big-pickle`, `deepseek-v4-flash`, `hy3`, `mimo`, `laguna-s`, `ling-tiny`, `nemotron-lightning`, `nemotron-ultra`
+- **OpenRouter free** — a dozen `free-*` nemotron / gemma / gpt-oss / north-code / laguna / ling slugs
+- **OpenRouter paid** (💲, explicit opt-in) — `deepseek`, `qwen-coder`, `haiku-4.5`, `sonnet-5`, `opus-4.8`, `opus-5`
+- **Cerebras** — `gpt-oss`, `glm` (need `CEREBRAS_API_KEY`)
+
+`GET /v1/models` is the live source of truth.
 
 ## Quick Start
 
@@ -73,154 +85,138 @@ cp .env.example .env
 # Edit .env — only fill in the providers you'll actually use
 ```
 
-Keys are **conditional**: the gateway boots with none set; providers simply report unhealthy until their key exists.
+Keys are **conditional**: the gateway boots with none set; a provider simply
+reports unhealthy (or errors on use) until its key exists.
 
 - `OPENROUTER_API_KEY` — https://openrouter.ai/keys
 - `GROQ_API_KEY` — https://console.groq.com/keys
 - `GEMINI_API_KEY` — https://aistudio.google.com/apikey
 - `MISTRAL_API_KEY` — https://console.mistral.ai/api-keys
-- `CEREBRAS_API_KEY` — https://cloud.cerebras.ai (free tier ~5 RPM, 1M tokens/day)
+- `CEREBRAS_API_KEY` — https://cloud.cerebras.ai
+- `OPENCODE_API_KEY` — https://opencode.ai (defaults to the shared `public` key)
 - `NIM_BASE_URL` + `NIM_API_KEY` — NVIDIA NIM (self-hosted or cloud)
 
-### 3. Start opencode + bridges (only for `claude-opencode-*` models)
+### 3. Start the gateway
 
 ```bash
-# Terminal 1: opencode server (uses auth.json keys)
-opencode serve
-
-# Terminal 2: one opencode-bridge instance per provider
-docker run -d -p 5001:5000 \
-  -e OPENCODE_URL=http://host.docker.internal:4096 \
-  -e OPENCODE_PROVIDER_ID=groq \
-  crazyboy24/opencode-bridge
-# repeat for gemini (:5002) and mistral (:5003)
+uvicorn gateway.main:app --env-file .env --host 127.0.0.1 --port 8787
+# or, idempotently (used by the SessionStart hook):
+./scripts/ensure-gateway.sh
 ```
 
-### 4. Start the gateway
+There is **no** separate opencode process to run — OpenCode Zen is called
+directly over HTTPS.
+
+### 4. Point Claude Code at it
 
 ```bash
-uvicorn gateway.main:app --host 127.0.0.1 --port 8787
-# or: python -m gateway.main
-```
-
-### 5. Point Claude Code at it
-
-```bash
-# in your shell profile or .claude/settings.local.json
+# .claude/settings.local.json (env block) or your shell profile
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8787"
-export ANTHROPIC_AUTH_TOKEN="sk-or-<YOUR_OPENROUTER_KEY>"
-export ANTHROPIC_API_KEY=""
-export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
 ```
 
-### 6. Verify
+### 5. Verify
 
 ```bash
+curl -s http://127.0.0.1:8787/v1/models | jq '.data | length'
 claude
-> /status          # Anthropic base URL: http://127.0.0.1:8787
-> /model           # native models + "From gateway" entries (29 today)
+> /model     # native models + the gateway's "From gateway" entries
 ```
 
 ## Configuration
 
 ### Environment variables
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `GATEWAY_PORT` | No | `8787` | Listen port |
-| `GATEWAY_HOST` | No | `127.0.0.1` | Listen host |
-| `GATEWAY_LOG_LEVEL` | No | `INFO` | Log verbosity |
-| `OPENROUTER_API_KEY` | Conditional | — | OpenRouter auth |
-| `OPENROUTER_BASE_URL` | No | `https://openrouter.ai/api` | Override base |
-| `GROQ_API_KEY` | Conditional | — | Groq auth |
-| `GEMINI_API_KEY` | Conditional | — | Gemini auth |
-| `NIM_BASE_URL` | Conditional | — | NIM endpoint |
-| `NIM_API_KEY` | Conditional | — | NIM auth |
-| `MISTRAL_API_KEY` | Conditional | — | Mistral auth |
-| `CEREBRAS_API_KEY` | Conditional | — | Cerebras auth |
-| `DISCOVERY_CACHE_TTL` | No | `300` | Discovery cache seconds |
-| `DISCOVERY_CACHE_PATH` | No | `~/.claude/cache/gateway-models.json` | Discovery cache file |
-| `REQUEST_TIMEOUT` | No | `600` | Upstream read timeout (s) |
-| `CONNECT_TIMEOUT` | No | `10` | Upstream connect timeout (s) |
-| `KEEPALIVE_INTERVAL` | No | `30` | Keepalive interval (s) |
-| `GEMINI_RPM` | No | `15` | Local Gemini rate cap |
-| `MISTRAL_RPM` | No | `500` | Local Mistral rate cap |
-| `CEREBRAS_RPM` | No | `5` | Local Cerebras rate cap |
-| `MAX_FALLBACK_ATTEMPTS` | No | `3` | Max hops per request |
+| Variable | Default | Purpose |
+|---|---|---|
+| `GATEWAY_PORT` / `GATEWAY_HOST` | `8787` / `127.0.0.1` | Listen address |
+| `GATEWAY_LOG_LEVEL` | `INFO` | Log verbosity |
+| `OPENROUTER_API_KEY` / `OPENROUTER_BASE_URL` | — / `https://openrouter.ai/api` | OpenRouter |
+| `GROQ_API_KEY` | — | Groq |
+| `GEMINI_API_KEY` | — | Gemini |
+| `MISTRAL_API_KEY` | — | Mistral |
+| `CEREBRAS_API_KEY` | — | Cerebras |
+| `OPENCODE_API_KEY` | `public` | OpenCode Zen (personal key lifts free limits) |
+| `NIM_BASE_URL` / `NIM_API_KEY` | — | NVIDIA NIM |
+| `DISCOVERY_CACHE_TTL` | `300` | Discovery cache seconds |
+| `REQUEST_TIMEOUT` / `CONNECT_TIMEOUT` | `600` / `10` | Upstream timeouts (s) |
+| `KEEPALIVE_INTERVAL` | `15` | Streaming heartbeat interval (s); `0` disables |
+| `GEMINI_RPM` / `MISTRAL_RPM` / `CEREBRAS_RPM` | `15` / `500` / `5` | Local rate caps |
+| `MAX_FALLBACK_ATTEMPTS` | `3` | Max hops per request |
 
-### Model maps & fallback chains
+### Model maps
 
-Both live in `gateway_config.yaml`. Keys are the suffix after the provider prefix:
+Live in `gateway_config.yaml`. Keys are the suffix after the provider prefix;
+values are the upstream model id. Example:
 
 ```yaml
-cerebras_model_map:
-  gpt-oss: "gpt-oss-120b"
-  glm: "zai-glm-4.7"
+opencode_model_map:          # claude-opencode-<key>  ->  OpenCode Zen model id
+  big-pickle: "big-pickle"
+  deepseek-v4-flash: "deepseek-v4-flash-free"
+opencode_base_url: "https://opencode.ai/zen/v1"
 ```
-
-## Fallback Chains
-
-Configured in `gateway_config.yaml`. Entries are registered backend provider
-names; the primary (owner of the model prefix) is implicit, so each list holds
-only the fallbacks tried **after** it, in order:
-
-```yaml
-fallback_chains:
-  groq:     ["opencode"]   # groq direct, then groq via the opencode-bridge
-  gemini:   ["opencode"]
-  mistral:  ["opencode"]
-  nim:      []
-  cerebras: []             # no compatible fallback — runs standalone
-  openrouter: []
-  opencode:   []
-```
-
-A model's **key** is carried across providers (`claude-groq-llama3` →
-`claude-opencode-groq-llama3`), so a fallback only works when the target exposes
-the same key. Fallback is attempted **only before any content has been streamed**:
-on a retryable failure (`timeout`, `connection_error`, `api_error`, `rate_limit`,
-`overloaded`) the router advances to the next backend; once bytes have reached the
-client, a later failure is surfaced as-is rather than retried on top of a
-half-sent stream. `MAX_FALLBACK_ATTEMPTS` caps the walk.
 
 ## How It Works
 
 ### Model discovery
 
-1. Claude Code starts → `GET /v1/models?limit=1000`
-2. Gateway merges static model maps + live opencode-bridge models (cached for `DISCOVERY_CACHE_TTL`)
-3. **Critical**: only IDs containing `claude` or `anthropic` survive — Claude Code silently filters everything else
-4. Every provider model is exposed as `claude-{provider}-{key}`
+1. Claude Code calls `GET /v1/models`.
+2. The gateway builds the payload from the static model maps and merges the
+   **free** models the live OpenCode Zen `/models` reports (cached for
+   `DISCOVERY_CACHE_TTL`). Paid Zen models are never surfaced as free.
+3. **Critical invariant**: every discoverable id must contain `claude` or
+   `anthropic` — Claude Code silently drops anything else.
+4. Each model is exposed as `claude-{provider}-{key}`.
 
 ### Request flow
 
 ```
-POST /v1/messages (model=claude-cerebras-gpt-oss)
-         │
-         ▼
-   Router matches prefix "claude-cerebras-"
-         │
-         ▼
-   CerebrasBackend: Anthropic → OpenAI translation (token bucket: 5 RPM)
-         │
-         ▼
-   POST https://api.cerebras.ai/v1/chat/completions
-         │
-         ▼
-   SSE stream → OpenAI→Anthropic translation → client
+POST /v1/messages (model = claude-groq-llama3)
+        │  match prefix "claude-groq-"
+        ▼
+GroqBackend: Anthropic → OpenAI request (tools forwarded)
+        ▼
+POST https://api.groq.com/openai/v1/chat/completions   (stream)
+        ▼
+OpenAI SSE → Anthropic SSE (tool_calls → tool_use, <think> stripped) → client
 ```
 
-### opencode-bridge routing
+OpenRouter is a byte-for-byte Anthropic passthrough (`/v1/messages` on
+OpenRouter). OpenCode Zen is a plain OpenAI-compatible call to
+`opencode_base_url`.
 
-```
-model=claude-opencode-groq-llama3
-         │
-         ▼
-   parse: provider=groq, key=llama3
-         ▼
-   opencode_bridge_endpoints["groq"] → http://localhost:5001
-         ▼
-   POST /v1/chat/completions → opencode-bridge → opencode serve (auth.json keys)
+## Streaming keepalive
+
+Large reasoning models can stay silent for tens of seconds before the first
+token. During that silence the streaming endpoint emits an Anthropic `ping`
+event every `KEEPALIVE_INTERVAL` seconds so the client/orchestrator knows the
+request is alive and keeps waiting. It **never cancels** the in-flight request —
+the same pending event is awaited across pings. Set `KEEPALIVE_INTERVAL=0` to
+disable.
+
+## Reasoning handling
+
+Some models inline literal `<think>…</think>` spans in their content (e.g. Qwen3
+via Groq). The OpenAI translator strips those spans from the visible text, with
+a state machine that handles tags split across streaming chunks and never drops
+ordinary text like `a < b`. Reasoning delivered in a separate provider field is
+ignored rather than leaked.
+
+## Fallback chains
+
+Configured in `gateway_config.yaml`. Entries are backend provider names tried
+**after** the implicit primary. Fallback fires only before any content has been
+streamed, on a retryable error. Today every chain is empty — each provider runs
+standalone (OpenCode Zen is its own provider, not a fallback for others):
+
+```yaml
+fallback_chains:
+  groq: []
+  gemini: []
+  mistral: []
+  nim: []
+  cerebras: []
+  openrouter: []
+  opencode: []
 ```
 
 ## API
@@ -228,41 +224,43 @@ model=claude-opencode-groq-llama3
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/` | GET | Service info + endpoint index |
-| `/v1/models` | GET | Discovery payload for Claude Code |
+| `/v1/models` | GET | Discovery payload (`?free=1` for free-only) |
 | `/v1/messages` | POST | Anthropic Messages API (routing + fallback + SSE) |
 | `/health` | GET | Per-backend health; `200` healthy / `503` otherwise |
+
+## Security: keys never leave your machine
+
+- Real keys live only in `.env`, which is **gitignored** and never tracked.
+- `.env.example` carries placeholders only.
+- No key appears in any tracked file, in any commit, in the whole history.
+- The gateway runs on `127.0.0.1`; keys are sent only to each provider's own
+  API over TLS, never to a third party.
 
 ## Development
 
 ```bash
-# Tests (note: addopts includes -x — full suite stops at first failure)
-python -m pytest tests/ -q
-
-# Lint & type check
+python -m pytest tests/ -q      # unit + integration (77 tests)
 ruff check gateway/ tests/
 mypy gateway
-
-# Boot smoke test
-python - <<'EOF'
-from fastapi.testclient import TestClient
-from gateway.main import app
-with TestClient(app) as c:
-    print(c.get("/v1/models").json()["data"][0])
-EOF
 ```
-
-Known baseline issues: 2 pre-existing test failures (`test_tool_result_conversion`, `test_openai_to_anthropic`) and non-compliant ruff/mypy baselines. See [OWNERSHIP.md §7](OWNERSHIP.md#7-known-issues--debt-tracked-not-hidden).
 
 ## Limitations
 
-- **Non-Anthropic tool-use reliability**: known caveat for Groq/Gemini/NIM/Mistral/Cerebras. Prefer OpenRouter (native Anthropic) for critical tool-use sessions.
-- **Thinking blocks**: dropped on non-Anthropic providers.
-- **Single gateway process**: no HA (local dev tool).
-- **opencode-bridge**: one provider per instance (run multiple containers).
+- **Free-tier rate limits** are real and shared: OpenRouter `free-*`, OpenCode
+  Zen, and Gemini pro/quota tiers return `429`/quota errors intermittently. They
+  are surfaced cleanly (not silent empties). A personal key lifts most of them.
+- **Cerebras / NIM** are inert until their keys/URL are set.
+- **Tiny `max_tokens`**: reasoning models spend a hidden thinking budget; with a
+  very small `max_tokens` they can stop before any visible text. Give them room
+  (the gateway imposes no token limit — it forwards the client's value verbatim).
+- **Single local process**: no HA; this is a local dev tool.
 
 ## Ownership & Maintenance
 
-See [OWNERSHIP.md](OWNERSHIP.md) for the ownership map, decision rights, invariant constraints, and quality gate. See [HANDOFF.md](HANDOFF.md) for the current-state handoff to the next contributor.
+See [OWNERSHIP.md](OWNERSHIP.md) for the agentic ownership model, decision
+rights, invariants, and quality gate. See [MODELS.md](MODELS.md) for the full
+engine menu and [CLAUDE.md](CLAUDE.md) for the subagent engine policy the
+orchestrator follows.
 
 ## License
 
