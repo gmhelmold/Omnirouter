@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
-# gw — thin wrapper around scripts/gw_agent.py so gateway spawns are one short line.
+# gw — frictionless dispatch of a task to a FREE gateway engine.
 #
-#   scripts/gw <engine-id> <mode> <task...>
+# The orchestrator (Claude, on the subscription) launches this as a background
+# Bash task; the reasoning + tool-use runs on a free gateway engine ($0 quota),
+# and the transcript + answer stream to the task's output file. gw_agent.py walks
+# a free-engine chain internally, so a 429 on one engine just falls through to the
+# next — the spawn "just works".
 #
-# Examples:
-#   scripts/gw claude-groq-llama3 reader "count the .py files under gateway/"
-#   scripts/gw claude-mistral-codestral worker "add a docstring to gateway/router.py route_with_fallback"
+#   gw "count the .py files under gateway/"          # reader (default)
+#   gw -w "add a docstring to router.py"             # worker mode (edit/write)
+#   gw -m claude-groq-llama3 "..."                   # prefer an engine (still falls back)
 #
-# Launch it with Bash run_in_background to get a $0 entry in the running-tasks
-# widget; fan out several (one per engine) for brute-force parallelism.
-set -euo pipefail
+set -uo pipefail
 ROOT="/Users/gustavoschneiter/Documents/Omnirouter"
 PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY="python3"
 
-if [ "$#" -lt 3 ]; then
-  echo "usage: gw <engine-id> <reader|worker> <task...>" >&2
-  exit 2
-fi
-engine="$1"; mode="$2"; shift 2
-exec "$PY" "$ROOT/scripts/gw_agent.py" --model "$engine" --mode "$mode" --cwd "$ROOT" --task "$*"
+mode="reader"
+model="claude-mistral-large"   # primary; gw_agent falls back to the free chain
+while getopts "wm:" opt; do
+  case "$opt" in
+    w) mode="worker" ;;
+    m) model="$OPTARG" ;;
+    *) echo "usage: gw [-w] [-m engine] \"task\"" >&2; exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+task="$*"
+[ -n "$task" ] || { echo "usage: gw [-w] [-m engine] \"task\"" >&2; exit 2; }
+
+exec "$PY" "$ROOT/scripts/gw_agent.py" --model "$model" --mode "$mode" --cwd "$ROOT" --task "$task"

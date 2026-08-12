@@ -59,24 +59,29 @@ To actually run a free gateway engine, **don't route inference — shell out** (
 codex-plugin pattern). Use the engine loop:
 
 ```
-python scripts/gw_agent.py --model <gateway-id> --mode worker --task "..." --cwd <dir> [--out FILE]
-# or the wrapper:
-scripts/gw <gateway-id> <reader|worker> "task..."
+scripts/gw "count the .py files under gateway/"     # reader (default), auto engine + 429 fallback
+scripts/gw -w "add a docstring to router.py"        # worker mode (edit/write)
+scripts/gw -m claude-groq-llama3 "..."              # prefer an engine (still falls back)
+# raw engine loop (what the wrapper calls):
+python scripts/gw_agent.py --model <gateway-id> --mode <reader|worker> --task "..." [--cwd DIR]
 ```
 
 `gw_agent.py` is a self-contained tool-use loop (read/list/grep/bash, plus write/edit in
 worker mode) that calls the gateway directly — it self-authenticates with the providers'
-keys — with automatic 429 fallback across free engines. Two ways to run it:
+keys — and walks a free-engine chain internally (`DEFAULT_FALLBACKS`), so a 429 on one
+engine just falls through to the next. `scripts/gw` wraps it with sensible defaults.
 
-- **Background task — $0 Claude, appears in the running-tasks widget.** Launch it with
-  Bash `run_in_background`; the free engine does the work, no Claude tokens are spent.
-  Fan out several (one per engine, distinct `description`) for brute-force parallelism.
-- **Native agent card — thin Claude cost, appears in the agents widget.** Spawn `worker`
-  and have it run the `gw_agent.py` command via Bash and relay the result. The wrapper's
-  own inference is managed Claude (cheap dispatch); the work still runs free.
+**Default way to run it — background task, $0 subscription quota:** launch `scripts/gw ...`
+with Bash `run_in_background`. The free engine does the work; no Claude tokens are spent.
+Give each a distinct `description` and fan out several for brute-force parallelism — this
+is the path to prefer for anything at scale.
 
-The native agents widget cannot be driven by a free engine directly, and MCP tools do
-not appear in it — those are hard app limits, not fixable here.
+There is NO free way to get a native agent-widget card: a native subagent's inference is
+always managed Claude (OAuth), and MCP tools don't appear in that widget either — hard app
+limits. A `worker` spawned with `model: haiku` that shells out to `gw_agent.py` *does* get
+a card, but it costs ~5–6k Haiku tokens of subscription quota **per spawn** (measured, and
+it grows with the result size and is re-read by the orchestrator). So use the Haiku-wrapper
+card only for the occasional spawn where the card matters — never for fan-out.
 
 **Only in API-key auth mode** (`ANTHROPIC_API_KEY=x ANTHROPIC_BASE_URL=<gateway> claude`,
 no OAuth) does inference honor the gateway. There, per-engine agent-defs work natively:
