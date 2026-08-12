@@ -48,3 +48,7 @@ gateway_config.yaml.local
 
 # Cache
 ~/.claude/cache/gateway-models.json
+
+# Claude Code (local machine state / secrets — keep agents + shared settings)
+.claude/settings.local.json
+.claude/worktrees/
