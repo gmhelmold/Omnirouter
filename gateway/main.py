@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
 
 from gateway.backends.base import BackendBase
+from gateway.backends.cerebras import CerebrasBackend
 from gateway.backends.gemini import GeminiBackend
 from gateway.backends.groq import GroqBackend
 from gateway.backends.mistral import MistralBackend
@@ -58,6 +59,7 @@ def _build_backends() -> list[BackendBase]:
         GeminiBackend(),
         NimBackend(),
         MistralBackend(),
+        CerebrasBackend(),
         OpencodeBridgeBackend(),
     ]
 

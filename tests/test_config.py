@@ -5,6 +5,7 @@ Tests for config module.
 from __future__ import annotations
 
 from gateway.config import (
+    CerebrasModelMap,
     FallbackChains,
     GatewayConfig,
     GatewayYamlConfig,
@@ -21,8 +22,14 @@ class TestGatewayYamlConfig:
         assert isinstance(config.openrouter_model_map, OpenRouterModelMap)
         assert isinstance(config.groq_model_map, GroqModelMap)
         assert isinstance(config.gemini_model_map, GeminiModelMap)
+        assert isinstance(config.cerebras_model_map, CerebrasModelMap)
         assert isinstance(config.opencode_bridge_model_map, OpencodeBridgeModelMap)
         assert isinstance(config.fallback_chains, FallbackChains)
+
+    def test_cerebras_model_map_default(self):
+        config = GatewayYamlConfig()
+        assert config.cerebras_model_map.gpt_oss == "gpt-oss-120b"
+        assert config.cerebras_model_map.glm == "zai-glm-4.7"
 
     def test_opencode_bridge_endpoints_default(self):
         config = GatewayYamlConfig()
@@ -38,6 +45,7 @@ class TestGatewayYamlConfig:
         assert chains.groq == ["opencode"]
         assert chains.gemini == ["opencode"]
         assert chains.mistral == ["opencode"]
+        assert chains.cerebras == []
         assert chains.openrouter == []
 
 
@@ -58,6 +66,7 @@ class TestGatewayConfig:
         assert config.request_timeout == 600.0
         assert config.gemini_rpm == 15
         assert config.mistral_rpm == 500
+        assert config.cerebras_rpm == 5
 
     def test_yaml_loading(self, tmp_path):
         yaml_content = """

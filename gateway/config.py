@@ -61,6 +61,13 @@ class MistralModelMap(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class CerebrasModelMap(BaseModel):
+    gpt_oss: str = Field(default="gpt-oss-120b", alias="gpt-oss")
+    glm: str = Field(default="zai-glm-4.7")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
 class OpencodeBridgeModelMap(BaseModel):
     groq: GroqModelMap = Field(default_factory=GroqModelMap)
     gemini: GeminiModelMap = Field(default_factory=GeminiModelMap)
@@ -73,11 +80,14 @@ class FallbackChains(BaseModel):
     # Entries are registered backend provider_names. The primary is implicit
     # (it is the backend that owns the model prefix); these are the *fallbacks*
     # tried after it, in order. "opencode" reruns the same provider via the
-    # opencode-bridge instance, so the shared model key maps cleanly.
+    # opencode-bridge instance, so the shared model key maps cleanly. Cerebras
+    # has no compatible fallback (opencode-bridge has no cerebras instance), so
+    # it runs standalone.
     groq: list[str] = Field(default_factory=lambda: ["opencode"])
     gemini: list[str] = Field(default_factory=lambda: ["opencode"])
     mistral: list[str] = Field(default_factory=lambda: ["opencode"])
     nim: list[str] = Field(default_factory=list)
+    cerebras: list[str] = Field(default_factory=list)
     openrouter: list[str] = Field(default_factory=list)
     opencode: list[str] = Field(default_factory=list)
 
@@ -92,6 +102,7 @@ class GatewayYamlConfig(BaseModel):
     gemini_model_map: GeminiModelMap = Field(default_factory=GeminiModelMap)
     nim_model_map: NimModelMap = Field(default_factory=NimModelMap)
     mistral_model_map: MistralModelMap = Field(default_factory=MistralModelMap)
+    cerebras_model_map: CerebrasModelMap = Field(default_factory=CerebrasModelMap)
     opencode_bridge_model_map: OpencodeBridgeModelMap = Field(default_factory=OpencodeBridgeModelMap)
     opencode_bridge_endpoints: dict[str, str] = Field(default_factory=lambda: {
         "groq": "http://localhost:5001",
@@ -132,6 +143,8 @@ class GatewayConfig(BaseSettings):
 
     mistral_api_key: str | None = Field(default=None, alias="MISTRAL_API_KEY")
 
+    cerebras_api_key: str | None = Field(default=None, alias="CEREBRAS_API_KEY")
+
     # Discovery
     discovery_cache_ttl: int = Field(default=300, alias="DISCOVERY_CACHE_TTL")  # seconds
     discovery_cache_path: Path = Field(
@@ -147,6 +160,7 @@ class GatewayConfig(BaseSettings):
     # Rate Limiting (local enforcement for free tiers)
     gemini_rpm: int = Field(default=15, alias="GEMINI_RPM")
     mistral_rpm: int = Field(default=500, alias="MISTRAL_RPM")
+    cerebras_rpm: int = Field(default=5, alias="CEREBRAS_RPM")
 
     # Fallback
     max_fallback_attempts: int = Field(default=3, alias="MAX_FALLBACK_ATTEMPTS")
@@ -190,6 +204,10 @@ class GatewayConfig(BaseSettings):
     @property
     def mistral_model_map(self) -> dict[str, str]:
         return self.yaml.mistral_model_map.model_dump()
+
+    @property
+    def cerebras_model_map(self) -> dict[str, str]:
+        return self.yaml.cerebras_model_map.model_dump(by_alias=True)
 
     @property
     def opencode_bridge_model_map(self) -> dict[str, dict[str, str]]:
