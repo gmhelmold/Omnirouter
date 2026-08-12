@@ -23,6 +23,7 @@ class TestBuildDiscoveryPayload:
         config.gemini_model_map = {"flash": "Gemini Flash"}
         config.nim_model_map = {"llama3": "NIM Llama"}
         config.mistral_model_map = {"large": "Mistral Large"}
+        config.cerebras_model_map = {"gpt-oss": "GPT-OSS 120B"}
         config.opencode_bridge_model_map = {
             "groq": {"llama3": "Groq via opencode"},
             "gemini": {"flash": "Gemini via opencode"},
@@ -32,7 +33,23 @@ class TestBuildDiscoveryPayload:
 
         assert "data" in payload
         assert isinstance(payload["data"], list)
-        assert len(payload["data"]) == 6
+        assert len(payload["data"]) == 8
+
+    def test_cerebras_entries(self):
+        config = MagicMock()
+        config.openrouter_model_map = {}
+        config.groq_model_map = {}
+        config.gemini_model_map = {}
+        config.nim_model_map = {}
+        config.mistral_model_map = {}
+        config.cerebras_model_map = {"gpt-oss": "GPT-OSS 120B", "glm": "GLM 4.7"}
+        config.opencode_bridge_model_map = {}
+
+        payload = build_discovery_payload(config)
+
+        ids = {entry["id"] for entry in payload["data"]}
+        assert "claude-cerebras-gpt-oss" in ids
+        assert "claude-cerebras-glm" in ids
 
     def test_ids_contain_claude(self):
         config = MagicMock()
@@ -41,6 +58,7 @@ class TestBuildDiscoveryPayload:
         config.gemini_model_map = {}
         config.nim_model_map = {}
         config.mistral_model_map = {}
+        config.cerebras_model_map = {}
         config.opencode_bridge_model_map = {}
 
         payload = build_discovery_payload(config)
@@ -56,6 +74,7 @@ class TestBuildDiscoveryPayload:
         config.gemini_model_map = {}
         config.nim_model_map = {}
         config.mistral_model_map = {}
+        config.cerebras_model_map = {}
         config.opencode_bridge_model_map = {}
 
         payload = build_discovery_payload(config)

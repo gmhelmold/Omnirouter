@@ -15,6 +15,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+import orjson
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,7 @@ from gateway.backends.groq import GroqBackend
 from gateway.backends.gemini import GeminiBackend
 from gateway.backends.nim import NimBackend
 from gateway.backends.mistral import MistralBackend
+from gateway.backends.cerebras import CerebrasBackend
 from gateway.backends.opencode_bridge import OpencodeBridgeBackend
 from gateway.config import config, get_config
 from gateway.discovery import get_discovery_payload
@@ -69,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         GeminiBackend(),
         NimBackend(),
         MistralBackend(),
+        CerebrasBackend(),
         OpencodeBridgeBackend(),
     ]
 
@@ -119,7 +122,7 @@ def create_app() -> FastAPI:
         cfg = get_config()
         payload = await get_discovery_payload(cfg)
         return Response(
-            content=payload,
+            content=orjson.dumps(payload),
             media_type="application/json",
         )
 
@@ -160,7 +163,6 @@ def create_app() -> FastAPI:
                 elif event.event:
                     yield f"event: {event.event}\n"
                     if event.data is not None:
-                        import orjson
                         yield f"data: {orjson.dumps(event.data).decode()}\n"
                     if event.retry:
                         yield f"retry: {event.retry}\n"
@@ -179,7 +181,7 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         """Health check endpoint."""
-        backends = getattr(globals().get("app"), "state", {}).get("backends", [])
+        backends = getattr(getattr(app, "state", None), "backends", [])
         if not backends:
             # Fallback: create fresh instances
             from gateway.backends.openrouter import OpenRouterBackend
@@ -187,6 +189,7 @@ def create_app() -> FastAPI:
             from gateway.backends.gemini import GeminiBackend
             from gateway.backends.nim import NimBackend
             from gateway.backends.mistral import MistralBackend
+            from gateway.backends.cerebras import CerebrasBackend
             from gateway.backends.opencode_bridge import OpencodeBridgeBackend
 
             backends = [
@@ -195,13 +198,14 @@ def create_app() -> FastAPI:
                 GeminiBackend(),
                 NimBackend(),
                 MistralBackend(),
+                CerebrasBackend(),
                 OpencodeBridgeBackend(),
             ]
 
         health_response = await check_all_backends(backends)
         status_code = 200 if health_response.status == "healthy" else 503
         return Response(
-            content=health_response.to_dict(),
+            content=orjson.dumps(health_response.to_dict()),
             media_type="application/json",
             status_code=status_code,
         )

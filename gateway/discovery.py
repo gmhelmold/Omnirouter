@@ -55,6 +55,10 @@ def build_discovery_payload(config) -> dict[str, list[dict[str, Any]]]:
     for key, display in config.mistral_model_map.items():
         entries.append(build_model_entry(f"claude-mistral-{key}", f"{display} (Free)"))
 
+    # Cerebras
+    for key, display in config.cerebras_model_map.items():
+        entries.append(build_model_entry(f"claude-cerebras-{key}", f"{display} (Free)"))
+
     # Opencode Bridge
     for provider, models in config.opencode_bridge_model_map.items():
         for model_key, display in models.items():

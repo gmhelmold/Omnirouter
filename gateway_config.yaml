@@ -33,6 +33,10 @@ mistral_model_map:
   small: "mistral-small-latest"
   codestral: "codestral-latest"
 
+cerebras_model_map:
+  gpt-oss: "gpt-oss-120b"
+  glm: "zai-glm-4.7"
+
 opencode_bridge_model_map:
   groq:
     llama3: "groq/llama-3.3-70b-versatile"
@@ -50,5 +54,6 @@ fallback_chains:
   gemini: ["gemini", "opencode-gemini", "openrouter-gemini"]
   mistral: ["mistral", "opencode-mistral", "openrouter-mistral"]
   nim: ["nim", "openrouter-nim"]
+  cerebras: ["cerebras", "openrouter-cerebras"]
   openrouter: ["openrouter"]
   opencode: ["opencode"]

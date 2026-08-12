@@ -7,12 +7,15 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
+import yaml
+
 from gateway.config import (
     GatewayConfig,
     GatewayYamlConfig,
     OpenRouterModelMap,
     GroqModelMap,
     GeminiModelMap,
+    CerebrasModelMap,
     OpencodeBridgeModelMap,
     FallbackChains,
 )
@@ -24,8 +27,14 @@ class TestGatewayYamlConfig:
         assert isinstance(config.openrouter_model_map, OpenRouterModelMap)
         assert isinstance(config.groq_model_map, GroqModelMap)
         assert isinstance(config.gemini_model_map, GeminiModelMap)
+        assert isinstance(config.cerebras_model_map, CerebrasModelMap)
         assert isinstance(config.opencode_bridge_model_map, OpencodeBridgeModelMap)
         assert isinstance(config.fallback_chains, FallbackChains)
+
+    def test_cerebras_model_map_default(self):
+        config = GatewayYamlConfig()
+        assert config.cerebras_model_map.gpt_oss == "gpt-oss-120b"
+        assert config.cerebras_model_map.glm == "zai-glm-4.7"
 
     def test_opencode_bridge_endpoints_default(self):
         config = GatewayYamlConfig()
@@ -40,6 +49,7 @@ class TestGatewayYamlConfig:
         assert "groq" in chains.groq
         assert "gemini" in chains.gemini
         assert "mistral" in chains.mistral
+        assert "cerebras" in chains.cerebras
 
 
 class TestGatewayConfig:
@@ -59,6 +69,7 @@ class TestGatewayConfig:
         assert config.request_timeout == 600.0
         assert config.gemini_rpm == 15
         assert config.mistral_rpm == 500
+        assert config.cerebras_rpm == 5
 
     def test_yaml_loading(self, tmp_path):
         yaml_content = """
@@ -71,7 +82,7 @@ groq_model_map:
         yaml_path.write_text(yaml_content)
 
         # Test loading
-        config = GatewayYamlConfig(**yaml_content)
+        config = GatewayYamlConfig(**yaml.safe_load(yaml_content))
         assert config.openrouter_model_map.opus_5 == "anthropic/claude-opus-5"
         assert config.groq_model_map.llama3 == "llama-3.3-70b-versatile"
 
