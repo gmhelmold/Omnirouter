@@ -4,11 +4,14 @@ When you spawn a subagent, YOU (the orchestrator) choose which engine powers it 
 passing a gateway model id as the `model` argument. There are two generic subagents:
 `worker` (full tools) and `reader` (read-only). Full engine menu: [MODELS.md](MODELS.md).
 
-## Default rule: prefer FREE engines
+## Hard rule: FREE engines only, unless the user explicitly authorizes a paid one
 
-Default every subagent spawn to a **free** engine. Escalate to a paid engine only when
-the task genuinely needs it (hard reasoning, or reliable tool-use loops). Free engines are
-labeled `FREE 🆓` in the model list; `GET /v1/models?free=1` returns only the free ones.
+Always spawn subagents on a **free** engine. **Never** use a paid engine unless the user
+has explicitly authorized it for that task in this conversation — no "it's a hard problem"
+exception, no silent escalation. If a task seems to need a paid engine, first do your best
+on a free one; if that is genuinely insufficient, STOP and ask the user for permission to
+use a specific paid engine, naming it and why. Free engines are labeled `FREE 🆓` in the
+model list; `GET /v1/models?free=1` returns only the free ones.
 
 ### Free engine ids, by what they're good at
 
@@ -26,7 +29,10 @@ Other free ids: `claude-groq-mixtral`, `claude-groq-gemma`, `claude-gemini-flash
 `claude-openrouter-free-gemma`, `claude-openrouter-free-gpt-oss`,
 `claude-openrouter-free-north-code`. The `claude-opencode-*` ids are an experimental bridge.
 
-### When to escalate to PAID
+### Paid engines — only after explicit user authorization
+
+Do not pick these on your own. Ask first, name the engine and the reason, and wait for a
+clear yes. Reference for when to propose one:
 
 - Reliable tool-use / agentic multi-step loops → `claude-openrouter-deepseek` (cheap).
 - Hardest reasoning, must-be-right refactors/architecture → `claude-openrouter-opus-5`.
