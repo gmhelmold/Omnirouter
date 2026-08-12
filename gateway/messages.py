@@ -31,6 +31,23 @@ def collect_message(events: list[SSEEvent], model: str) -> dict[str, Any]:
         data = event.data or {}
         etype = event.event
 
+        # OpenRouter relays its (Anthropic-format) SSE byte-for-byte as "raw"
+        # events. In non-streaming mode we must parse those data lines back into
+        # normalized events, otherwise the folded message comes out empty. Each
+        # Anthropic data line's JSON carries a "type" equal to the event name.
+        if etype == "raw":
+            line = data.get("line", "")
+            if not line.startswith("data:"):
+                continue
+            payload = line[len("data:"):].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            etype = data.get("type", "")
+
         if etype == "message_start":
             msg = data.get("message", {})
             message["id"] = msg.get("id", message["id"])

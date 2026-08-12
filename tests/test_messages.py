@@ -59,3 +59,26 @@ def test_collect_handles_bad_tool_json():
     ]
     msg = collect_message(events, "m")
     assert msg["content"][0]["input"] == {}
+
+
+def test_collect_from_raw_openrouter_events():
+    """OpenRouter relays Anthropic SSE as raw events; non-streaming must fold
+    them into content (regression: previously came out empty)."""
+    raw_lines = [
+        'event: message_start',
+        'data: {"type":"message_start","message":{"id":"msg_or","model":"deepseek","usage":{"input_tokens":5}}}',
+        'event: content_block_start',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"PO"}}',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"NG"}}',
+        'event: content_block_stop',
+        'data: {"type":"content_block_stop","index":0}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+        'data: [DONE]',
+    ]
+    events = [SSEEvent(event="raw", data={"line": ln}) for ln in raw_lines]
+    msg = collect_message(events, "claude-openrouter-deepseek")
+    assert msg["content"] == [{"type": "text", "text": "PONG"}]
+    assert msg["stop_reason"] == "end_turn"
+    assert msg["id"] == "msg_or"
