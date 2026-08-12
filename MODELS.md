@@ -95,7 +95,6 @@ Slugs unverified while the key is unset (`.env` has `CEREBRAS_API_KEY=` empty).
 | `claude-openrouter-free-gpt-oss` | gpt-oss 20B | 🆓 | large | free general |
 | `claude-openrouter-free-north-code` | North Mini Code | 🆓 | large | free code model |
 | `claude-openrouter-free-ling-tiny` | Ling 3.0 Tiny | 🆓 | large | free tiny |
-| `claude-openrouter-free-lfm` | LFM 2.5 2.6B | 🆓 | large | free tiny |
 | `claude-openrouter-free-laguna-s` / `-laguna-xs` | Poolside Laguna 2.1 | 🆓 | large | free code |
 | `claude-openrouter-deepseek` | DeepSeek V3.1 | 💲 | ~160K | reliable tool-use / agentic loops |
 | `claude-openrouter-qwen-coder` | Qwen3 Coder | 💲 | large | code-focused, cheap |
@@ -116,7 +115,8 @@ endpoint **directly** — not through `opencode serve`'s agent loop — so these
 behave like any other model: streaming and **tool-use work** (the OpenAI
 translator forwards Claude Code's tool schemas and maps `tool_calls` back to
 `tool_use`). No local process required. Ids are flat `claude-opencode-<key>`;
-discovery auto-merges any extra models Zen's `/models` reports.
+discovery auto-merges any extra **free** (`-free`) models Zen reports — Zen's paid
+models (gpt-5.x, claude-*, grok, glm-*) are not surfaced and the public key can't use them.
 
 | Engine id | Zen modelID |
 |---|---|

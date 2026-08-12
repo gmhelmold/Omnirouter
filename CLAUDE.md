@@ -26,11 +26,11 @@ model list; `GET /v1/models?free=1` returns only the free ones.
 | Fastest tokens/sec (needs CEREBRAS_API_KEY) | `claude-cerebras-gpt-oss` | ~128K, 5 RPM |
 
 Other free ids — Groq: `claude-groq-gpt-oss-120b`, `-gpt-oss-20b`, `-qwen3`, `-compound`,
-`-compound-mini`. Gemini: `claude-gemini-flash-lite`, `-2.5-flash`, `-2.5-pro`, `-3-flash`,
+`-compound-mini`. Gemini: `claude-gemini-flash-lite`, `-3-flash`,
 `-3.1-pro`, `-3.5-flash`, `-3.6-flash`, `-gemma-31b`, `-gemma-26b`. Mistral: `claude-mistral-small`,
 `-medium`, `-devstral`, `-magistral`, `-ministral-8b`, `-code`. OpenRouter free:
 `claude-openrouter-free-nemotron-ultra`, `-nemotron-nano`, `-nemotron-lightning`, `-nemotron-9b`,
-`-gemma`, `-gemma-26b`, `-gpt-oss`, `-north-code`, `-ling-tiny`, `-lfm`, `-laguna-s`.
+`-gemma`, `-gemma-26b`, `-gpt-oss`, `-north-code`, `-ling-tiny`, `-laguna-s`.
 The `claude-opencode-*` ids are opencode's own hosted "OpenCode Zen" models (e.g.
 `big-pickle`, `deepseek-v4-flash`, `nemotron-ultra`) — free, OpenAI-compatible, and
 tool-capable (shared public key, so occasional rate limits).
