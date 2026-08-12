@@ -179,6 +179,47 @@ class OpenAITranslator:
         self._stop_reason = "end_turn"
         self._output_tokens = 0
         self._model = ""
+        # Reasoning strip: some models (e.g. Qwen3 via Groq) inline literal
+        # <think>...</think> spans in the content stream. Filter them out,
+        # tracking state across chunk boundaries.
+        self._in_think = False
+        self._carry = ""
+
+    _THINK_OPEN = "<think>"
+    _THINK_CLOSE = "</think>"
+
+    @staticmethod
+    def _hold_partial(s: str, tag: str) -> tuple[str, str]:
+        """Split ``s`` into (safe, held) where ``held`` is a trailing suffix
+        that could be the start of ``tag`` split across chunks."""
+        for k in range(min(len(tag) - 1, len(s)), 0, -1):
+            if s.endswith(tag[:k]):
+                return s[:-k], s[-k:]
+        return s, ""
+
+    def _filter_reasoning(self, text: str) -> str:
+        """Remove <think>...</think> spans from a streamed content fragment,
+        preserving state so tags split across chunks are handled."""
+        self._carry += text
+        out: list[str] = []
+        while self._carry:
+            if not self._in_think:
+                idx = self._carry.find(self._THINK_OPEN)
+                if idx == -1:
+                    safe, self._carry = self._hold_partial(self._carry, self._THINK_OPEN)
+                    out.append(safe)
+                    break
+                out.append(self._carry[:idx])
+                self._carry = self._carry[idx + len(self._THINK_OPEN):]
+                self._in_think = True
+            else:
+                idx = self._carry.find(self._THINK_CLOSE)
+                if idx == -1:
+                    _, self._carry = self._hold_partial(self._carry, self._THINK_CLOSE)
+                    break
+                self._carry = self._carry[idx + len(self._THINK_CLOSE):]
+                self._in_think = False
+        return "".join(out)
 
     # -- public API ---------------------------------------------------------
 
@@ -218,7 +259,9 @@ class OpenAITranslator:
 
         content = delta.get("content")
         if content:
-            events.extend(self._emit_text(content))
+            visible = self._filter_reasoning(content)
+            if visible:
+                events.extend(self._emit_text(visible))
 
         tool_calls = delta.get("tool_calls")
         if tool_calls:
@@ -240,6 +283,14 @@ class OpenAITranslator:
         if not self._message_started:
             # Nothing ever streamed; still produce a well-formed empty message.
             events.extend(self._ensure_started({}))
+
+        # Emit any held text that turned out not to be a reasoning tag; drop an
+        # unterminated <think> remainder.
+        if self._carry:
+            leftover = "" if self._in_think else self._carry
+            self._carry = ""
+            if leftover:
+                events.extend(self._emit_text(leftover))
 
         if self._text_index is not None:
             events.append(self._content_block_stop(self._text_index))
