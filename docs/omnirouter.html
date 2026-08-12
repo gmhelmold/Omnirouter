@@ -289,14 +289,10 @@ curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span
   <section id="use">
     <p class="eyebrow">Daily use</p>
     <h2>Working with it</h2>
-    <div class="grid cols-2">
+    <div class="grid">
       <div class="card">
         <h3>Subagents: free by default</h3>
         <p style="margin-top:7px">The orchestrator spawns <code>worker</code> / <code>reader</code> subagents on a <b>free</b> engine unless you authorize a paid one. Choose per spawn with <code>model: claude-groq-llama3</code>, or pin all of them via <code>CLAUDE_CODE_SUBAGENT_MODEL</code>. Full policy in <code>CLAUDE.md</code>.</p>
-      </div>
-      <div class="card">
-        <h3>Give reasoning models room</h3>
-        <p style="margin-top:7px"><code>max_tokens</code> caps the <i>total</i> output — hidden thinking plus the visible reply. Set it too low and a reasoning model spends the whole budget thinking and returns nothing. The gateway adds no limit of its own; it forwards exactly what you send.</p>
       </div>
     </div>
   </section>
@@ -328,7 +324,6 @@ curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span
     <p class="eyebrow">Troubleshooting</p>
     <h2>When something looks off</h2>
     <div>
-      <div class="qa"><h3>Empty reply from a reasoning model <span class="sig">stop: max_tokens</span></h3><p>It spent the whole token budget thinking. Raise <code>max_tokens</code> — reasoning models (Groq <code>gpt-oss</code>/<code>qwen3</code>, Gemini 2.5/3.x, OpenCode Zen) need headroom for hidden thinking plus the answer.</p></div>
       <div class="qa"><h3>A model returns a rate-limit <span class="sig">429</span></h3><p>Free tiers share upstream pools, so a given model may be limited one minute and fine the next. It's surfaced as a clean error, never a silent blank. Retry, switch to another free engine, or set a personal key.</p></div>
       <div class="qa"><h3>Provider unhealthy or auth error <span class="sig">no key</span></h3><p>That provider's key isn't set. Cerebras and NIM stay inert until <code>CEREBRAS_API_KEY</code> / <code>NIM_BASE_URL</code>+<code>NIM_API_KEY</code> are present. Add the key and restart.</p></div>
     </div>

@@ -45,17 +45,16 @@ Slugs verified live against each provider's `/models` on 2026-08-12.
 | Engine id | Model | Context | Notes / best for |
 |---|---|---|---|
 | `claude-gemini-flash` | Gemini Flash (latest) | 1M | huge context; long-doc reading/summarizing |
-| `claude-gemini-pro` | Gemini Pro (latest) | 1M+ | strongest free reasoning + massive context |
 | `claude-gemini-flash-lite` | Gemini Flash-Lite (latest) | 1M | cheapest/fastest Gemini; light tasks |
 | `claude-gemini-3-flash` | Gemini 3 Flash (preview) | 1M | newer flash |
-| `claude-gemini-3.1-pro` | Gemini 3.1 Pro (preview) | 1M+ | newer pro reasoning |
 | `claude-gemini-3.5-flash` / `-3.6-flash` | Gemini 3.5 / 3.6 Flash | 1M | latest flash lines |
 | `claude-gemini-gemma-31b` / `-gemma-26b` | Gemma 4 31B / 26B | large | open Gemma via Google |
 
-Gemini 1.5 (`flash` / `pro` / `flash-8b`) was **retired**; `flash`/`pro` now alias the rolling `-latest`.
-The pinned `gemini-2.5-*` ids were also dropped ("no longer available to new users" on the free
-tier). Reasoning-tier ids (`pro`, `3.1-pro`) work but can hit free-tier quota (429). Note: Gemini
-2.5/3.x spend a thinking budget — with a very small `max_tokens` they can return empty; give them room.
+Gemini 1.5 (`flash` / `pro` / `flash-8b`) was **retired**; the pinned `gemini-2.5-*` ids were also
+dropped ("no longer available to new users"). The **pro tier is not free**: `gemini-pro-latest`
+and `gemini-3.1-pro` return a free-tier quota of `limit: 0`, so `claude-gemini-pro` / `-3.1-pro`
+are intentionally **not** in the menu — add them only with a paid Google key. The flash lines are
+genuinely free (15 RPM shared, so a busy minute can still return a clean `429`).
 
 ### Mistral — all free-tier
 
@@ -139,7 +138,7 @@ occasional `FreeUsageLimitError` (surfaced cleanly). Set `OPENCODE_API_KEY` in
   `claude-mistral-large` for routine work. `claude-groq-llama-8b` for trivial mechanical work.
 - **Tool-use / agentic loops**: OpenRouter pass-through is most reliable
   (`claude-openrouter-deepseek` cheap, `claude-openrouter-opus-5` premium).
-- **Big inputs**: `claude-gemini-pro` or `claude-gemini-flash` (1M).
+- **Big inputs**: `claude-gemini-flash` or `claude-gemini-flash-lite` (1M).
 - **Hard problems only**: `claude-openrouter-opus-5`.
 - **Add a model**: edit any `*_model_map` in `gateway_config.yaml`; `:free` slugs, `free-*`
   keys, and any provider in `free_tier_providers` are auto-tagged FREE.

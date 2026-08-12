@@ -122,6 +122,51 @@ async def test_messages_unknown_model_stream(client):
     assert "model_not_found" in resp.text
 
 
+class _RateLimitStub:
+    """Backend that fails immediately with a retryable rate_limit error."""
+    provider_name = "groq"
+    model_prefix = "claude-groq-"
+
+    async def handle_request(self, model, body, headers, cwd=None):
+        yield SSEEvent(
+            event="error",
+            data={"type": "error", "error": {"type": "rate_limit", "message": "quota exceeded"}},
+        )
+
+
+def test_http_status_for_error_mapping():
+    from gateway.main import _http_status_for_error
+
+    assert _http_status_for_error({"type": "rate_limit"}) == 429
+    assert _http_status_for_error({"type": "auth_error"}) == 401
+    assert _http_status_for_error({"type": "invalid_request"}) == 400
+    assert _http_status_for_error({"type": "model_not_found"}) == 404
+    assert _http_status_for_error({"type": "timeout"}) == 504
+    # all_fallbacks_failed unwraps to the underlying cause
+    assert _http_status_for_error(
+        {"type": "all_fallbacks_failed", "last_error": {"type": "rate_limit"}}
+    ) == 429
+    # unknown / genuine upstream faults stay 502
+    assert _http_status_for_error({"type": "connection_error"}) == 502
+    assert _http_status_for_error({"type": "all_fallbacks_failed", "last_error": None}) == 502
+
+
+@pytest.mark.asyncio
+async def test_messages_non_stream_rate_limit_is_429(monkeypatch):
+    """A rate-limited upstream must surface as HTTP 429, not a blanket 502."""
+    app = create_app()
+    get_router().initialize([_RateLimitStub()])
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.post(
+            "/v1/messages",
+            json={"model": "claude-groq-llama3", "stream": False,
+                  "messages": [{"role": "user", "content": "hi"}], "max_tokens": 16},
+        )
+    assert resp.status_code == 429
+    assert resp.json()["error"]["type"] == "all_fallbacks_failed"
+
+
 class _SlowStub:
     """Backend that stalls before its first event (simulates a slow model)."""
     provider_name = "groq"

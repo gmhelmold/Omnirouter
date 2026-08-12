@@ -250,9 +250,6 @@ mypy gateway
   Zen, and Gemini pro/quota tiers return `429`/quota errors intermittently. They
   are surfaced cleanly (not silent empties). A personal key lifts most of them.
 - **Cerebras / NIM** are inert until their keys/URL are set.
-- **Tiny `max_tokens`**: reasoning models spend a hidden thinking budget; with a
-  very small `max_tokens` they can stop before any visible text. Give them room
-  (the gateway imposes no token limit — it forwards the client's value verbatim).
 - **Single local process**: no HA; this is a local dev tool.
 
 ## Ownership & Maintenance

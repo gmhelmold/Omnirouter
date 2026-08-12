@@ -49,10 +49,12 @@ class GroqModelMap(BaseModel):
 
 
 class GeminiModelMap(BaseModel):
-    # gemini-1.5-* were retired. flash/pro point at the rolling "-latest"
-    # aliases; specific versions (2.5/3.x, gemma-4) are added via YAML.
+    # gemini-1.5-* were retired. `flash` points at the rolling "-latest" alias;
+    # specific versions (3.x flash, gemma-4) are added via YAML. The pro tier is
+    # deliberately NOT a default: Google gives gemini-pro-latest / gemini-3.1-pro
+    # a free-tier quota of `limit: 0`, so it would only ever fail under a free
+    # key (and be falsely tagged FREE). Add `pro:` in YAML with a paid key.
     flash: str = Field(default="gemini-flash-latest")
-    pro: str = Field(default="gemini-pro-latest")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 

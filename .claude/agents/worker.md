@@ -1,6 +1,6 @@
 ---
 name: worker
-description: "Generic worker subagent with full tools (read, search, run, edit, write). Model-agnostic: the engine is chosen at spawn time — pass a gateway model id as the `model` argument (e.g. claude-groq-llama3, claude-gemini-flash, claude-openrouter-deepseek, claude-openrouter-opus-5). See MODELS.md for the engine menu. Use for any task; pick the engine to match cost/latency/quality."
+description: "Generic worker subagent with full tools (read, search, run, edit, write). Runs on the session default engine (CLAUDE_CODE_SUBAGENT_MODEL) through the gateway. To pick a specific free engine per spawn, use a per-engine variant instead — e.g. worker-groq-llama3, worker-gemini-flash-lite, worker-mistral-codestral (code); see MODELS.md and scripts/gen-agent-engines.py. Use for any task."
 model: inherit
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---

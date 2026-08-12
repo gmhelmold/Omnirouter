@@ -85,6 +85,36 @@ def _error_response(error_type: str, message: str, status_code: int) -> Response
     )
 
 
+# Map an Anthropic-style error type to the right HTTP status. Free-tier engines
+# fail mostly with rate_limit/quota — surfacing that as 429 (not a blanket 502)
+# lets clients back off and retry instead of treating it as a gateway crash.
+_ERROR_STATUS = {
+    "rate_limit": 429,
+    "overloaded": 503,
+    "timeout": 504,
+    "auth_error": 401,
+    "authentication_error": 401,
+    "permission_error": 403,
+    "invalid_request": 400,
+    "invalid_request_error": 400,
+    "model_not_found": 404,
+    "not_found": 404,
+}
+
+
+def _http_status_for_error(error: dict[str, Any]) -> int:
+    """Pick an HTTP status from an error payload's type.
+
+    For ``all_fallbacks_failed`` the meaningful cause is the wrapped
+    ``last_error`` (e.g. every backend rate-limited), so unwrap it first.
+    Anything unrecognised (connection_error, api_error, exception) stays 502.
+    """
+    error_type = error.get("type", "")
+    if error_type == "all_fallbacks_failed" and isinstance(error.get("last_error"), dict):
+        error_type = error["last_error"].get("type", "")
+    return _ERROR_STATUS.get(error_type, 502)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan - startup and shutdown."""
@@ -163,12 +193,14 @@ def create_app() -> FastAPI:
         headers = dict(request.headers)
         router_instance = get_router()
         stream = body.get("stream", True)
+        logger.info("incoming request model=%s stream=%s", model, stream)
 
         if not stream:
             events = []
             async for event in router_instance.route_with_fallback(model, body, headers, cwd=None):
                 if event.event == "error":
-                    return _json_response(event.data, status_code=502)
+                    status = _http_status_for_error(event.data.get("error", {}))
+                    return _json_response(event.data, status_code=status)
                 events.append(event)
             return _json_response(collect_message(events, model))
 
