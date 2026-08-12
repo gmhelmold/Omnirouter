@@ -1,24 +1,35 @@
-# Omnirouter — engine menu (pick any model for any agent)
+# Omnirouter — engine menu
 
-Roles and engines are **decoupled**. There are only two generic subagents —
-[`worker`](.claude/agents/worker.md) (full tools) and [`reader`](.claude/agents/reader.md)
-(read-only) — and you choose which **engine** (provider/model) powers each spawn.
+The gateway exposes many provider models under one Anthropic-compatible endpoint. This is
+the menu; `GET /v1/models` returns the live list, `?free=1` only the free ones.
 
-## How to pick the engine at spawn time
+## How a subagent actually runs on a free engine
 
-Claude Code resolves a subagent's model in this priority order:
+**Read this before trying to "pick an engine per spawn" — the obvious way does not work
+under an OAuth (Claude Pro/Max) login.** Claude Code, when logged in via the subscription,
+sends **all** inference — the main loop *and* every subagent — to Anthropic's managed
+endpoint and **ignores `ANTHROPIC_BASE_URL`**. So a subagent's own model can never be a
+gateway id: the Task-tool `model` argument (only accepts `sonnet/opus/haiku/fable`) and the
+agent `model:` frontmatter both hit Anthropic, which rejects gateway ids. The gateway is
+used only for the `/model` discovery list. (Confirmed by measurement and by
+anthropics/claude-code#48011 / #38698, both "not planned".)
 
-1. `CLAUDE_CODE_SUBAGENT_MODEL` env var (pins *all* subagents to one engine)
-2. the `model` argument passed when spawning the agent (per-spawn choice)
-3. the agent's `model:` frontmatter (ours is `inherit`, so it defers to the above)
-4. the main session's model
+So there are two real paths:
 
-So to run `worker` on Groq for one task and on Opus for the next, just pass a different
-`model` id each spawn — no new agent files. To force everything onto one free engine for
-a while, set `CLAUDE_CODE_SUBAGENT_MODEL=claude-groq-llama3` in `.claude/settings*.json`.
+- **Keep the subscription (default): shell out, don't route.** Run a free engine as a
+  subprocess that calls the gateway directly:
+  ```
+  scripts/gw "count the .py files under gateway/"     # reader, $0, auto 429 fallback
+  scripts/gw -w "task that edits files"               # worker mode
+  ```
+  Launch `scripts/gw` (or `scripts/gw_agent.py`) as a **background task** — the free engine
+  does the work at $0 subscription quota. Full policy in [CLAUDE.md](CLAUDE.md).
+- **API-key mode (no OAuth):** `ANTHROPIC_API_KEY=x ANTHROPIC_BASE_URL=<gateway> claude` —
+  then subagent inference honors the gateway and per-engine agent-defs
+  (`scripts/gen-agent-engines.py`) work natively. This trades the whole session off the
+  subscription.
 
-The `model` id is any gateway id from the menu below (`GET /v1/models` for the live list;
-add `?free=1` to see only free ones).
+The `model` ids below are what `scripts/gw`/`gw_agent.py` accept for `--model`.
 
 ## Engine menu
 

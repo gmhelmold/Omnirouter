@@ -74,6 +74,12 @@ gateway/
 tests/                       # QA owner   — must stay green per §6
 gateway_config.yaml          # Config owner — model maps + fallback chains
 .env.example                 # Config owner — every env var documented here
+
+scripts/
+├── gw_agent.py              # Tools owner — agentic tool-use loop on a gateway engine (OAuth-safe shell-out)
+├── gw                       # Tools owner — one-line frictionless wrapper around gw_agent.py
+├── gen-agent-engines.py     # Tools owner — per-engine agent-defs (API-key mode only)
+└── ensure-gateway.sh        # Tools owner — idempotent gateway launcher (SessionStart hook)
 ```
 
 ## 5. Invariant Constraints (do not break)
@@ -90,6 +96,7 @@ These are load-bearing. A change that violates one **requires the architect's si
 8. **Streaming keepalive**: the keepalive wrapper emits `ping` on silence but must **never cancel** the in-flight upstream — await the same pending event across pings (no `asyncio.wait_for` on the generator step).
 9. **Free-only discovery**: only free models may be tagged `FREE 🆓`. The OpenCode Zen live merge is restricted to `-free` ids so paid Zen models are never advertised as free.
 10. **Reasoning isolation**: inline `<think>…</think>` is stripped from visible content; a partial tag split across chunks must not corrupt or drop ordinary text.
+11. **Error status mapping**: a non-streaming error response maps its Anthropic error *type* to the right HTTP status via `_http_status_for_error` (`rate_limit`→429, auth→401, `invalid_request`→400, `model_not_found`→404, `timeout`→504, `overloaded`→503; `all_fallbacks_failed` unwraps to its `last_error`). It must **never** blanket-502 a retryable rate limit — clients rely on 429 to back off. (Fixed 2026-08 in `main.py`.)
 
 ## 6. Quality Gate
 
@@ -117,7 +124,7 @@ Rules:
 | K6 | providers | Free-tier rate limits (OpenRouter `free-*`, OpenCode Zen, Gemini quota) return `429` intermittently | External; surfaced cleanly, lifted by a personal key |
 | K7 | providers | Cerebras / NIM inert until keys/URL configured | External config |
 
-Full test suite: **77 passing**. New findings go here with the highest free `K#`.
+Full test suite: **79 passing**. New findings go here with the highest free `K#`.
 
 ## 8. Change Management
 

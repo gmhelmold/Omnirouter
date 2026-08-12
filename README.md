@@ -15,6 +15,7 @@ consistent interface.
 - [Why](#why)
 - [Providers](#providers)
 - [Model menu](#model-menu)
+- [Running work on free engines](#running-work-on-free-engines)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [How It Works](#how-it-works)
@@ -57,7 +58,7 @@ The full, current menu lives in [MODELS.md](MODELS.md) and is generated from
 `gateway_config.yaml`. Highlights (all free unless noted):
 
 - **Groq** — `llama3`, `llama-8b`, `gpt-oss-120b`, `gpt-oss-20b`, `qwen3`, `compound`, `compound-mini`
-- **Gemini** — `flash`, `pro`, `flash-lite`, `3-flash`, `3.1-pro`, `3.5-flash`, `3.6-flash`, `gemma-31b`, `gemma-26b`
+- **Gemini** — `flash`, `flash-lite`, `3-flash`, `3.5-flash`, `3.6-flash`, `gemma-31b`, `gemma-26b` (the pro tier isn't free — Google gives it `limit: 0` on the free key — so it's omitted)
 - **Mistral** — `large`, `medium`, `small`, `codestral`, `devstral`, `devstral-medium`, `magistral`, `ministral-14b/8b/3b`, `code`
 - **OpenCode Zen** — `big-pickle`, `deepseek-v4-flash`, `hy3`, `mimo`, `laguna-s`, `ling-tiny`, `nemotron-lightning`, `nemotron-ultra`
 - **OpenRouter free** — a dozen `free-*` nemotron / gemma / gpt-oss / north-code / laguna / ling slugs
@@ -65,6 +66,32 @@ The full, current menu lives in [MODELS.md](MODELS.md) and is generated from
 - **Cerebras** — `gpt-oss`, `glm` (need `CEREBRAS_API_KEY`)
 
 `GET /v1/models` is the live source of truth.
+
+## Running work on free engines
+
+The gateway makes the free models **discoverable** in Claude Code's `/model` picker. But
+running an actual **subagent** on one has a catch worth knowing: while you're logged in
+with a **Claude subscription (OAuth)**, Claude Code sends every subagent's inference to
+Anthropic and **ignores `ANTHROPIC_BASE_URL`** — so a subagent cannot run *on* a gateway
+engine (this is by design; see anthropics/claude-code#48011). The gateway is used for
+discovery only.
+
+The compliant way to put free engines to work while keeping your subscription is to **shell
+out** — a subprocess that calls the gateway directly (the gateway self-authenticates with
+the providers' keys):
+
+```bash
+scripts/gw "count the .py files under gateway/"     # reader; $0 quota; auto 429 fallback
+scripts/gw -w "task that edits files"               # worker mode (read + edit/write)
+scripts/gw -m claude-groq-llama3 "..."              # prefer an engine (still falls back)
+```
+
+`scripts/gw` wraps [`scripts/gw_agent.py`](scripts/gw_agent.py), a self-contained tool-use
+loop that runs on the chosen free engine and walks a fallback chain on rate limits. Launch
+it as a background task and fan out several for brute-force parallelism — the work runs at
+**$0** of your subscription quota. If you don't need the subscription, running Claude Code
+in **API-key mode** (`ANTHROPIC_API_KEY=x ANTHROPIC_BASE_URL=<gateway> claude`) makes
+subagent inference honor the gateway natively. Full policy: [CLAUDE.md](CLAUDE.md).
 
 ## Quick Start
 
@@ -239,7 +266,7 @@ fallback_chains:
 ## Development
 
 ```bash
-python -m pytest tests/ -q      # unit + integration (77 tests)
+python -m pytest tests/ -q      # unit + integration (79 tests)
 ruff check gateway/ tests/
 mypy gateway
 ```

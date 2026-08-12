@@ -289,10 +289,14 @@ curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span
   <section id="use">
     <p class="eyebrow">Daily use</p>
     <h2>Working with it</h2>
-    <div class="grid">
+    <div class="grid cols-2">
       <div class="card">
-        <h3>Subagents: free by default</h3>
-        <p style="margin-top:7px">The orchestrator spawns <code>worker</code> / <code>reader</code> subagents on a <b>free</b> engine unless you authorize a paid one. Choose per spawn with <code>model: claude-groq-llama3</code>, or pin all of them via <code>CLAUDE_CODE_SUBAGENT_MODEL</code>. Full policy in <code>CLAUDE.md</code>.</p>
+        <h3>Free engines: shell out, don't route</h3>
+        <p style="margin-top:7px">On a Claude subscription (OAuth), Claude Code sends every subagent's inference to Anthropic and ignores <code>ANTHROPIC_BASE_URL</code> — so a subagent can't run <i>on</i> a gateway engine. The gateway is used for the <code>/model</code> list; to do real work on a free engine, shell out to it instead.</p>
+      </div>
+      <div class="card">
+        <h3>Run a task on a free engine</h3>
+        <p style="margin-top:7px">Launch <code>scripts/gw "your task"</code> (add <code>-w</code> for edit/write) as a background task. It runs a tool-use loop on a free gateway engine at <b>$0</b> of subscription quota, and walks the free-engine chain so a 429 just falls through. Fan out several for brute-force parallelism. Full policy in <code>CLAUDE.md</code>.</p>
       </div>
     </div>
   </section>
