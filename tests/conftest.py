@@ -23,20 +23,14 @@ def mock_config():
     config.nim_base_url = "http://localhost:8000"
     config.nim_api_key = "test-nim-key"
     config.mistral_api_key = "test-mistral-key"
-    config.opencode_bridge_endpoints = {
-        "groq": "http://localhost:5001",
-        "gemini": "http://localhost:5002",
-        "mistral": "http://localhost:5003",
-    }
+    config.opencode_serve_url = "http://127.0.0.1:5051"
+    config.opencode_agent = "general"
     config.openrouter_model_map = {"opus-5": "anthropic/claude-opus-5"}
     config.groq_model_map = {"llama3": "llama-3.3-70b-versatile"}
     config.gemini_model_map = {"flash": "gemini-1.5-flash"}
     config.nim_model_map = {"llama3": "meta/llama-3.1-70b-instruct"}
     config.mistral_model_map = {"large": "mistral-large-latest"}
-    config.opencode_bridge_model_map = {
-        "groq": {"llama3": "groq/llama-3.3-70b-versatile"},
-        "gemini": {"flash": "gemini/gemini-1.5-flash"},
-    }
+    config.opencode_model_map = {"big-pickle": "big-pickle"}
     config.fallback_chains = {
         "groq": ["groq", "openrouter-groq"],
         "gemini": ["gemini"],

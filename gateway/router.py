@@ -150,13 +150,7 @@ class ModelRouter:
         if not model.startswith(backend.model_prefix):
             return None
         remainder = model[len(backend.model_prefix):]
-        if backend.provider_name == "opencode":
-            # claude-opencode-{provider}-{key}
-            for provider in get_config().opencode_bridge_endpoints:
-                prefix = f"{provider}-"
-                if remainder.startswith(prefix):
-                    return provider, remainder[len(prefix):]
-            return None
+        # opencode is flat: claude-opencode-{key} (provider is always opencode).
         return backend.provider_name, remainder
 
     def _map_model_for_backend(
@@ -169,10 +163,7 @@ class ModelRouter:
         split = self._split_model(original_model, source)
         if not split:
             return None
-        provider, key = split
-
-        if target.provider_name == "opencode":
-            return f"claude-opencode-{provider}-{key}"
+        _, key = split
         return f"{target.model_prefix}{key}"
 
 

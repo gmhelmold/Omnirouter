@@ -41,17 +41,18 @@ class OpenRouterModelMap(BaseModel):
 
 
 class GroqModelMap(BaseModel):
+    # mixtral-8x7b-32768 and gemma2-9b-it were retired by Groq. Extra keys
+    # (gpt-oss, qwen3, compound, ...) are supplied via YAML (extra="allow").
     llama3: str = Field(default="llama-3.3-70b-versatile")
-    mixtral: str = Field(default="mixtral-8x7b-32768")
-    gemma: str = Field(default="gemma2-9b-it")
 
     model_config = {"extra": "allow"}
 
 
 class GeminiModelMap(BaseModel):
-    flash: str = Field(default="gemini-1.5-flash")
-    pro: str = Field(default="gemini-1.5-pro")
-    flash_8b: str = Field(default="gemini-1.5-flash-8b", alias="flash-8b")
+    # gemini-1.5-* were retired. flash/pro point at the rolling "-latest"
+    # aliases; specific versions (2.5/3.x, gemma-4) are added via YAML.
+    flash: str = Field(default="gemini-flash-latest")
+    pro: str = Field(default="gemini-pro-latest")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 
@@ -79,24 +80,30 @@ class CerebrasModelMap(BaseModel):
     model_config = {"populate_by_name": True, "extra": "allow"}
 
 
-class OpencodeBridgeModelMap(BaseModel):
-    groq: GroqModelMap = Field(default_factory=GroqModelMap)
-    gemini: GeminiModelMap = Field(default_factory=GeminiModelMap)
-    mistral: MistralModelMap = Field(default_factory=MistralModelMap)
+class OpencodeModelMap(BaseModel):
+    """Flat map of gateway key -> opencode provider modelID, served by a local
+    ``opencode serve`` instance (opencode's own hosted "zen" models). All free.
+    Keys are exposed as `claude-opencode-<key>`. Hyphenated keys come in via
+    YAML (extra="allow"); a few valid-identifier ones are declared here so a
+    bare config still has sensible defaults."""
 
-    model_config = {"extra": "allow"}
+    big_pickle: str = Field(default="big-pickle", alias="big-pickle")
+    deepseek_v4_flash: str = Field(default="deepseek-v4-flash-free", alias="deepseek-v4-flash")
+    hy3: str = Field(default="hy3-free")
+    mimo: str = Field(default="mimo-v2.5-free")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
 
 class FallbackChains(BaseModel):
     # Entries are registered backend provider_names. The primary is implicit
     # (it is the backend that owns the model prefix); these are the *fallbacks*
-    # tried after it, in order. "opencode" reruns the same provider via the
-    # opencode-bridge instance, so the shared model key maps cleanly. Cerebras
-    # has no compatible fallback (opencode-bridge has no cerebras instance), so
-    # it runs standalone.
-    groq: list[str] = Field(default_factory=lambda: ["opencode"])
-    gemini: list[str] = Field(default_factory=lambda: ["opencode"])
-    mistral: list[str] = Field(default_factory=lambda: ["opencode"])
+    # tried after it, in order. opencode is NOT a fallback for other providers:
+    # its `opencode serve` instance only exposes opencode's own hosted models,
+    # not groq/gemini/mistral catalogs, so a shared model key would not map.
+    groq: list[str] = Field(default_factory=list)
+    gemini: list[str] = Field(default_factory=list)
+    mistral: list[str] = Field(default_factory=list)
     nim: list[str] = Field(default_factory=list)
     cerebras: list[str] = Field(default_factory=list)
     openrouter: list[str] = Field(default_factory=list)
@@ -114,12 +121,11 @@ class GatewayYamlConfig(BaseModel):
     nim_model_map: NimModelMap = Field(default_factory=NimModelMap)
     mistral_model_map: MistralModelMap = Field(default_factory=MistralModelMap)
     cerebras_model_map: CerebrasModelMap = Field(default_factory=CerebrasModelMap)
-    opencode_bridge_model_map: OpencodeBridgeModelMap = Field(default_factory=OpencodeBridgeModelMap)
-    opencode_bridge_endpoints: dict[str, str] = Field(default_factory=lambda: {
-        "groq": "http://localhost:5001",
-        "gemini": "http://localhost:5002",
-        "mistral": "http://localhost:5003",
-    })
+    # opencode is a standalone provider backed by a local `opencode serve`
+    # instance (session API), exposing opencode's own hosted models.
+    opencode_model_map: OpencodeModelMap = Field(default_factory=OpencodeModelMap)
+    opencode_serve_url: str = Field(default="http://127.0.0.1:5051")
+    opencode_agent: str = Field(default="general")
     fallback_chains: FallbackChains = Field(default_factory=FallbackChains)
     # Providers whose entire catalog is free-tier. Every model from these is
     # badged FREE in discovery. (OpenRouter is mixed, so its free models are
@@ -227,16 +233,16 @@ class GatewayConfig(BaseSettings):
         return self.yaml.cerebras_model_map.model_dump(by_alias=True)
 
     @property
-    def opencode_bridge_model_map(self) -> dict[str, dict[str, str]]:
-        return {
-            "groq": self.yaml.opencode_bridge_model_map.groq.model_dump(),
-            "gemini": self.yaml.opencode_bridge_model_map.gemini.model_dump(by_alias=True),
-            "mistral": self.yaml.opencode_bridge_model_map.mistral.model_dump(),
-        }
+    def opencode_model_map(self) -> dict[str, str]:
+        return self.yaml.opencode_model_map.model_dump(by_alias=True)
 
     @property
-    def opencode_bridge_endpoints(self) -> dict[str, str]:
-        return self.yaml.opencode_bridge_endpoints
+    def opencode_serve_url(self) -> str:
+        return self.yaml.opencode_serve_url
+
+    @property
+    def opencode_agent(self) -> str:
+        return self.yaml.opencode_agent
 
     @property
     def fallback_chains(self) -> dict[str, list[str]]:

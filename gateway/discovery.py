@@ -70,15 +70,13 @@ def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, A
                 f"{slug} ({label(provider_label, free)})",
             ))
 
-    # Opencode Bridge (nested by provider)
-    for provider, models in config.opencode_bridge_model_map.items():
-        for model_key, slug in models.items():
-            free = is_free(provider, model_key, slug)
-            suffix = label(f"opencode:{provider}", free)
-            entries.append(build_model_entry(
-                f"claude-opencode-{provider}-{model_key}",
-                f"{slug} ({suffix})",
-            ))
+    # opencode (flat) — a local `opencode serve` instance, opencode's own
+    # hosted models. All free.
+    for key, slug in config.opencode_model_map.items():
+        entries.append(build_model_entry(
+            f"claude-opencode-{key}",
+            f"{slug} ({label('opencode', True)})",
+        ))
 
     # Validate all IDs contain 'claude' or 'anthropic'
     for entry in entries:
@@ -93,31 +91,43 @@ def build_discovery_payload(config: GatewayConfig) -> dict[str, list[dict[str, A
 
 async def fetch_live_bridge_models(config: GatewayConfig) -> list[dict[str, Any]]:
     """
-    Fetch live models from each opencode-bridge instance.
+    Fetch live models from the local ``opencode serve`` instance so the menu
+    reflects whatever opencode actually offers (its ``/config/providers``).
 
-    Returns list of model entries to merge with static config.
+    Each opencode modelID is exposed as ``claude-opencode-<modelID>``. Returns
+    entries to merge with the static config; silently empty if opencode serve
+    is not reachable (static map is used instead).
     """
-    live_entries = []
+    live_entries: list[dict[str, Any]] = []
 
-    for provider, endpoint in config.opencode_bridge_endpoints.items():
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{endpoint}/v1/models")
-                if response.status_code == 200:
-                    data = response.json()
-                    for model in data.get("data", []):
-                        model_id = model.get("id", "")
-                        if model_id:
-                            # Prefix with claude-opencode-{provider}-
-                            prefixed_id = f"claude-opencode-{provider}-{model_id}"
-                            if "claude" in prefixed_id.lower() or "anthropic" in prefixed_id.lower():
-                                live_entries.append({
-                                    "id": prefixed_id,
-                                    "display_name": f"opencode: {model.get('display_name', model_id)}",
-                                })
-        except Exception:
-            # Silently skip failed bridge - static config will be used
-            pass
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{config.opencode_serve_url}/config/providers")
+            if response.status_code != 200:
+                return []
+            data = response.json()
+    except Exception:
+        return []
+
+    providers = data.get("providers") if isinstance(data, dict) else data
+    if not isinstance(providers, list):
+        return []
+
+    # Skip models the static map already covers (by opencode modelID) so we
+    # don't list the same model twice under its friendly key and its raw id.
+    known = set(config.opencode_model_map.values())
+
+    for prov in providers:
+        prov_id = prov.get("id", "opencode")
+        for model_id in (prov.get("models") or {}):
+            if model_id in known:
+                continue
+            gw_id = f"claude-opencode-{model_id}"
+            if "claude" in gw_id.lower() or "anthropic" in gw_id.lower():
+                live_entries.append({
+                    "id": gw_id,
+                    "display_name": f"{model_id} (opencode:{prov_id} · FREE 🆓)",
+                })
 
     return live_entries
 

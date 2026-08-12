@@ -25,10 +25,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {"llama3": "NIM Llama"}
         config.mistral_model_map = {"large": "Mistral Large"}
         config.cerebras_model_map = {"gpt-oss": "GPT-OSS 120B"}
-        config.opencode_bridge_model_map = {
-            "groq": {"llama3": "Groq via opencode"},
-            "gemini": {"flash": "Gemini via opencode"},
-        }
+        config.opencode_model_map = {"big-pickle": "big-pickle", "hy3": "hy3-free"}
 
         payload = build_discovery_payload(config)
 
@@ -45,7 +42,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {}
         config.mistral_model_map = {}
         config.cerebras_model_map = {"gpt-oss": "GPT-OSS 120B", "glm": "GLM 4.7"}
-        config.opencode_bridge_model_map = {}
+        config.opencode_model_map = {}
 
         payload = build_discovery_payload(config)
 
@@ -64,7 +61,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {}
         config.mistral_model_map = {}
         config.cerebras_model_map = {}
-        config.opencode_bridge_model_map = {}
+        config.opencode_model_map = {}
 
         payload = build_discovery_payload(config)
         by_id = {e["id"]: e["display_name"] for e in payload["data"]}
@@ -82,7 +79,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {"llama3": "meta/llama"}
         config.mistral_model_map = {}
         config.cerebras_model_map = {}
-        config.opencode_bridge_model_map = {}
+        config.opencode_model_map = {}
 
         payload = build_discovery_payload(config)
         by_id = {e["id"]: e["display_name"] for e in payload["data"]}
@@ -102,7 +99,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {}
         config.mistral_model_map = {}
         config.cerebras_model_map = {}
-        config.opencode_bridge_model_map = {}
+        config.opencode_model_map = {}
 
         payload = build_discovery_payload(config)
 
@@ -118,7 +115,7 @@ class TestBuildDiscoveryPayload:
         config.nim_model_map = {}
         config.mistral_model_map = {}
         config.cerebras_model_map = {}
-        config.opencode_bridge_model_map = {}
+        config.opencode_model_map = {}
 
         payload = build_discovery_payload(config)
         entry = payload["data"][0]
@@ -169,15 +166,16 @@ class TestFetchLiveBridgeModels:
     @pytest.mark.asyncio
     async def test_successful_fetch(self):
         config = MagicMock()
-        config.opencode_bridge_endpoints = {
-            "groq": "http://localhost:5001",
-        }
+        config.opencode_serve_url = "http://127.0.0.1:5051"
+        # Static map already covers big-pickle -> it must be skipped; only the
+        # genuinely-new model (mimo) should be surfaced live.
+        config.opencode_model_map = {"big-pickle": "big-pickle"}
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "data": [
-                {"id": "llama-3.3-70b", "display_name": "Llama 3.3 70B"}
+            "providers": [
+                {"id": "opencode", "models": {"big-pickle": {}, "mimo-v2.5-free": {}}}
             ]
         }
 
@@ -190,12 +188,13 @@ class TestFetchLiveBridgeModels:
             entries = await fetch_live_bridge_models(config)
 
             assert len(entries) == 1
-            assert entries[0]["id"] == "claude-opencode-groq-llama-3.3-70b"
+            assert entries[0]["id"] == "claude-opencode-mimo-v2.5-free"
 
     @pytest.mark.asyncio
     async def test_failed_fetch(self):
         config = MagicMock()
-        config.opencode_bridge_endpoints = {"groq": "http://localhost:5001"}
+        config.opencode_serve_url = "http://127.0.0.1:5051"
+        config.opencode_model_map = {}
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
