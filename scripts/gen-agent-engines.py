@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: T201, E501  (CLI script: print() is the user-facing output; a few lines run long.)
 """Generate per-engine subagent definitions for Claude Code.
 
 IMPORTANT — API-KEY MODE ONLY. These agent-defs only route to the gateway when
@@ -111,6 +112,21 @@ def clean() -> int:
     return n
 
 
+def _agent_path(mode: str, model_id: str) -> pathlib.Path | None:
+    """Resolve the agent-def path for an engine, guarded against path traversal
+    from a crafted model id (ids can be merged from a remote /models list, so a
+    ``../`` in one must never let the write escape AGENTS_DIR). Returns None (and
+    warns) for an unsafe id."""
+    key = model_id.removeprefix("claude-")
+    p = (AGENTS_DIR / f"{mode}-{key}.md").resolve()
+    # Reject separators / parent refs in the key, and require the result to land
+    # directly in AGENTS_DIR (belt and suspenders against traversal).
+    if "/" in key or "\\" in key or ".." in key or p.parent != AGENTS_DIR.resolve():
+        print(f"skip: unsafe model id {model_id!r}", file=sys.stderr)
+        return None
+    return p
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="emit reader+worker for every FREE gateway id (live)")
@@ -135,14 +151,18 @@ def main() -> int:
             return 1
         for model_id, label in ids:
             for mode in ("reader", "worker"):
-                (AGENTS_DIR / f"{mode}-{model_id.removeprefix('claude-')}.md").write_text(
-                    render(mode, model_id, label, "free gateway engine"), encoding="utf-8")
+                fp = _agent_path(mode, model_id)
+                if fp is None:
+                    continue
+                fp.write_text(render(mode, model_id, label, "free gateway engine"), encoding="utf-8")
                 written += 1
     else:
         for model_id, label, note, modes in CURATED:
             for mode in modes:
-                (AGENTS_DIR / f"{mode}-{model_id.removeprefix('claude-')}.md").write_text(
-                    render(mode, model_id, label, note), encoding="utf-8")
+                fp = _agent_path(mode, model_id)
+                if fp is None:
+                    continue
+                fp.write_text(render(mode, model_id, label, note), encoding="utf-8")
                 written += 1
 
     print(f"wrote {written} agent-def files to {AGENTS_DIR}")
