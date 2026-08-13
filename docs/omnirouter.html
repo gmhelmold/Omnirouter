@@ -296,7 +296,7 @@ curl 127.0.0.1:8787/v1/models?free=1   <span class="c"># free engines only</span
       </div>
       <div class="card">
         <h3>Run a task on a free engine</h3>
-        <p style="margin-top:7px">Launch <code>scripts/gw "your task"</code> (add <code>-w</code> for edit/write) as a background task. It runs a tool-use loop on a free gateway engine at <b>$0</b> of subscription quota, and walks the free-engine chain so a 429 just falls through. Fan out several for brute-force parallelism. Full policy in <code>CLAUDE.md</code>.</p>
+        <p style="margin-top:7px">Launch <code>scripts/gw "your task"</code> (reader = read/grep only; add <code>-w</code> for shell or edits) as a background task. It runs a tool-use loop on a free gateway engine at <b>$0</b> of subscription quota, and walks the free-engine chain so a 429 just falls through. Fan out several for brute-force parallelism. Full policy in <code>CLAUDE.md</code>.</p>
       </div>
     </div>
   </section>

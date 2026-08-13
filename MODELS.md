@@ -19,8 +19,8 @@ So there are two real paths:
 - **Keep the subscription (default): shell out, don't route.** Run a free engine as a
   subprocess that calls the gateway directly:
   ```
-  scripts/gw "count the .py files under gateway/"     # reader, $0, auto 429 fallback
-  scripts/gw -w "task that edits files"               # worker mode
+  scripts/gw "summarize what gateway/router.py does"  # reader (read/grep only), $0, auto 429 fallback
+  scripts/gw -w "count the .py files under gateway/"   # worker mode: needs shell or edits files
   ```
   Launch `scripts/gw` (or `scripts/gw_agent.py`) as a **background task** — the free engine
   does the work at $0 subscription quota. Full policy in [CLAUDE.md](CLAUDE.md).

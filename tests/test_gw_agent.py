@@ -26,33 +26,30 @@ def test_safe_path_rejects_escape(tmp_path):
 
 
 def test_read_file_cannot_escape_cwd(tmp_path):
-    out = gw.run_tool("read_file", {"path": "../secret"}, tmp_path, "reader")
+    out = gw.run_tool("read_file", {"path": "../secret"}, tmp_path)
     assert out.startswith("ERROR") and "escapes" in out
 
 
 def test_write_file_cannot_escape_cwd(tmp_path):
-    out = gw.run_tool("write_file", {"path": "../evil", "content": "x"}, tmp_path, "worker")
+    out = gw.run_tool("write_file", {"path": "../evil", "content": "x"}, tmp_path)
     assert out.startswith("ERROR")
     assert not (tmp_path.parent / "evil").exists()
 
 
-def test_reader_bash_blocks_writes_and_network(tmp_path):
-    for cmd in ("rm -rf .", "echo hi > f", "curl http://x", "mv a b", "chmod +x f"):
-        out = gw.run_tool("bash", {"cmd": cmd}, tmp_path, "reader")
-        assert "reader mode blocks" in out, cmd
+def test_reader_has_no_shell_or_write_tools():
+    # reader is genuinely read-only; bash/write/edit are worker-only.
+    assert "bash" not in gw.READER_TOOLS
+    assert "write_file" not in gw.READER_TOOLS
+    assert "edit_file" not in gw.READER_TOOLS
+    for t in ("bash", "write_file", "edit_file"):
+        assert t in gw.WORKER_TOOLS
 
 
-def test_reader_bash_allows_read_commands(tmp_path):
+def test_worker_bash_runs(tmp_path):
     (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("y\n", encoding="utf-8")
-    out = gw.run_tool("bash", {"cmd": "ls *.py 2>/dev/null | wc -l"}, tmp_path, "reader")
+    out = gw.run_tool("bash", {"cmd": "ls *.py 2>/dev/null | wc -l"}, tmp_path)
     assert out.strip().startswith("2")
-
-
-def test_worker_bash_is_unguarded(tmp_path):
-    out = gw.run_tool("bash", {"cmd": "echo hi > f.txt"}, tmp_path, "worker")
-    assert "blocks" not in out
-    assert (tmp_path / "f.txt").read_text().strip() == "hi"
 
 
 def test_engine_chain_dedup_primary_first():

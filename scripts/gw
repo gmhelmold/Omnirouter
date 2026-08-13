@@ -7,9 +7,9 @@
 # a free-engine chain internally, so a 429 on one engine just falls through to the
 # next — the spawn "just works".
 #
-#   gw "count the .py files under gateway/"          # reader (default)
-#   gw -w "add a docstring to router.py"             # worker mode (edit/write)
-#   gw -m claude-groq-llama3 "..."                   # prefer an engine (still falls back)
+#   gw "list the functions defined in gateway/router.py"   # reader: read_file/grep only, no shell
+#   gw -w "count the .py files under gateway/ with bash"    # worker: needs shell (bash) or writes
+#   gw -m claude-groq-llama3 "..."                          # prefer an engine (still falls back)
 #
 set -uo pipefail
 ROOT="/Users/gustavoschneiter/Documents/Omnirouter"

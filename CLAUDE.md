@@ -59,15 +59,15 @@ To actually run a free gateway engine, **don't route inference — shell out** (
 codex-plugin pattern). Use the engine loop:
 
 ```
-scripts/gw "count the .py files under gateway/"     # reader (default), auto engine + 429 fallback
-scripts/gw -w "add a docstring to router.py"        # worker mode (edit/write)
+scripts/gw "summarize what gateway/router.py does"  # reader: read_file/grep only, no shell
+scripts/gw -w "count the .py files under gateway/"  # worker: needs shell (bash) or writes
 scripts/gw -m claude-groq-llama3 "..."              # prefer an engine (still falls back)
 # raw engine loop (what the wrapper calls):
 python scripts/gw_agent.py --model <gateway-id> --mode <reader|worker> --task "..." [--cwd DIR]
 ```
 
-`gw_agent.py` is a self-contained tool-use loop (read/list/grep/bash, plus write/edit in
-worker mode) that calls the gateway directly — it self-authenticates with the providers'
+`gw_agent.py` is a self-contained tool-use loop (reader: read_file/list_dir/grep, read-only
+with no shell; worker adds bash + write/edit) that calls the gateway directly — it self-authenticates with the providers'
 keys — and walks a free-engine chain internally (`DEFAULT_FALLBACKS`), so a 429 on one
 engine just falls through to the next. `scripts/gw` wraps it with sensible defaults.
 

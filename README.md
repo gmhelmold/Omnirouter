@@ -81,8 +81,8 @@ out** — a subprocess that calls the gateway directly (the gateway self-authent
 the providers' keys):
 
 ```bash
-scripts/gw "count the .py files under gateway/"     # reader; $0 quota; auto 429 fallback
-scripts/gw -w "task that edits files"               # worker mode (read + edit/write)
+scripts/gw "summarize what gateway/router.py does"  # reader: read_file/grep only, no shell
+scripts/gw -w "count the .py files under gateway/"  # worker: needs shell (bash) or writes
 scripts/gw -m claude-groq-llama3 "..."              # prefer an engine (still falls back)
 ```
 

@@ -11,12 +11,11 @@ keys), it works regardless of how Claude Code itself is authenticated (OAuth or
 api-key) — the codex-plugin trick: shell out instead of routing Claude's inference.
 
 Tools & safety:
-- reader mode: read_file, list_dir, grep, bash. File reads and the shell are
-  confined to --cwd: file paths that escape it are rejected, and reader's bash is
-  guarded (best-effort) against writes/deletes/network so the "reader" role can't
-  quietly mutate the tree. Use it for research/analysis.
-- worker mode: the above plus write_file / edit_file and an UNGUARDED bash. It can
-  modify files under --cwd. Only spawn worker on tasks you actually want to write.
+- reader mode: read_file, list_dir, grep — genuinely read-only, no shell. File
+  paths are confined to --cwd (traversal is rejected). Use it for research/analysis.
+- worker mode: the above plus bash, write_file, and edit_file — it can run shell
+  and modify files under --cwd. Only spawn worker on tasks you actually want to
+  write. (bash is unrestricted; --cwd bounds the file tools, not shell redirects.)
 
 Run it as a BACKGROUND Bash task so it shows up in the running-tasks widget and
 costs no Claude tokens:
@@ -31,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import re
 import subprocess
 import sys
 import urllib.error
@@ -39,15 +37,12 @@ import urllib.request
 
 GATEWAY = "http://127.0.0.1:8787/v1/messages"
 
-READER_TOOLS = ["read_file", "list_dir", "grep", "bash"]
-WORKER_TOOLS = [*READER_TOOLS, "write_file", "edit_file"]
-
-# reader's bash may not write, delete, or reach the network (best-effort denylist).
-# stderr redirects (2>, &>) are allowed; stdout redirects (>, >>) are not.
-_UNSAFE_BASH = re.compile(
-    r"\b(rm|rmdir|mv|dd|truncate|shred|tee|chmod|chown|mkdir|ln|curl|wget|nc|ncat|ssh|scp|rsync)\b"
-    r"|(?<![0-9&])>>?"
-)
+# reader is genuinely read-only: read_file / list_dir / grep, NO shell. bash and the
+# file-writers are worker-only. (A reader-mode bash denylist was tried and dropped —
+# it was trivially bypassable via interpreters like `python -c`, i.e. false security.
+# If a task needs shell/counting, spawn worker.)
+READER_TOOLS = ["read_file", "list_dir", "grep"]
+WORKER_TOOLS = [*READER_TOOLS, "bash", "write_file", "edit_file"]
 
 TOOL_SCHEMAS = {
     "read_file": {
@@ -102,7 +97,7 @@ def _safe_path(cwd: pathlib.Path, rel: str) -> pathlib.Path:
     return p
 
 
-def run_tool(name: str, args: dict, cwd: pathlib.Path, mode: str) -> str:
+def run_tool(name: str, args: dict, cwd: pathlib.Path) -> str:
     try:
         if name == "read_file":
             return _clip(_safe_path(cwd, args["path"]).read_text(encoding="utf-8", errors="replace"))
@@ -114,11 +109,8 @@ def run_tool(name: str, args: dict, cwd: pathlib.Path, mode: str) -> str:
             out = subprocess.run(["grep", "-rniE", args["pattern"], target], cwd=cwd,
                                  capture_output=True, text=True, timeout=30)
             return _clip(out.stdout or "(no matches)")
-        if name == "bash":
-            cmd = args["cmd"]
-            if mode == "reader" and _UNSAFE_BASH.search(cmd):
-                return "ERROR: reader mode blocks writes/deletes/network in bash — re-run in worker mode (-w) if this is intended."
-            out = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=120)
+        if name == "bash":  # worker-only (not in READER_TOOLS)
+            out = subprocess.run(args["cmd"], cwd=cwd, shell=True, capture_output=True, text=True, timeout=120)
             return _clip((out.stdout or "") + (out.stderr or "") or "(no output)")
         if name == "write_file":
             p = _safe_path(cwd, args["path"])
@@ -251,7 +243,7 @@ def main() -> int:
         messages.append({"role": "assistant", "content": blocks})
         results = []
         for tu in tool_uses:
-            out = run_tool(tu["name"], tu.get("input", {}), cwd, args.mode)
+            out = run_tool(tu["name"], tu.get("input", {}), cwd)
             results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": out})
         messages.append({"role": "user", "content": results})
     else:
