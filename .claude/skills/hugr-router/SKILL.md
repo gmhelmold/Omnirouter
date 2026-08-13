@@ -1,9 +1,9 @@
 ---
-name: gw
+name: hugr-router
 description: Offload grunt work to FREE gateway engines instead of spending Claude Max quota. Use when the user says "use the router / free models", "don't burn my quota", or when a task is mechanical and voluminous — bulk file reads, repo-wide greps, counts, repetitive edits, first-pass audits, or wide parallel fan-out. Dispatches scripts/gw as background tasks that run at $0 subscription quota; Claude stays the orchestrator and verifies the output.
 ---
 
-# gw — route grunt work to free gateway engines
+# hugr-router — route grunt work to free gateway engines
 
 Omnirouter serves free provider models (groq / gemini / mistral / nemotron / …) behind a
 local Anthropic-compatible gateway. A Claude subscription (OAuth) will **not** route a
